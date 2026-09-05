@@ -1,0 +1,40 @@
+# 依赖
+node_modules/
+
+# 运行产物与本地实例数据
+data/
+*.log
+tmp/
+out/
+.history/
+.trellis/.runtime/
+
+# 本地备份
+*.bak*
+
+# AI 工作流脚手架（本地开发使用，不入库）
+.trellis/
+.github/
+AGENTS.md
+.agent/
+.agents/
+.claude/
+.codebuddy/
+.codex/
+.cursor/
+.devin/
+.dsh/
+.factory/
+.gemini/
+.grok/
+.kilocode/
+.kimi-code/
+.kiro/
+.omp/
+.opencode/
+.pi/
+.qoder/
+.reasonix/
+.snow/
+.trae/
+.zcode/
