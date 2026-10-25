@@ -20,12 +20,26 @@ function toast(msg, kind = 'info') {
     }
 }
 
+let csrfTokenCache = null;
+async function getCsrfToken() {
+    if (!csrfTokenCache) {
+        const response = await fetch('/csrf-token');
+        const data = await response.json();
+        csrfTokenCache = String(data?.token || '');
+    }
+    return csrfTokenCache;
+}
+
 async function api(path, options = {}) {
     const init = { headers: {}, ...options };
     if (init.body !== undefined) {
         init.method = init.method || 'POST';
         init.headers['Content-Type'] = 'application/json';
         init.body = JSON.stringify(init.body);
+    }
+    if (init.method && init.method !== 'GET') {
+        // Host CSRF protection rejects mutating requests without this header.
+        init.headers['X-CSRF-Token'] = await getCsrfToken();
     }
     const response = await fetch(`${API}${path}`, init);
     const text = await response.text();
