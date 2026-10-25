@@ -471,6 +471,114 @@ async function tabDiagnose(root) {
     return section;
 }
 
+function tabGovernance(root) {
+    const section = el(`
+        <div>
+            <div class="stgi-note">扩展治理：停用用户自行安装的扩展（宿主不再加载）。停用=整目录搬入停用区，扩展数据随目录各自保存、不丢失；启用原样搬回。彻底清理会删除停用副本释放磁盘空间，不可恢复。</div>
+            <div class="stgi-row">
+                <button class="stgi-btn" data-role="reload">刷新</button>
+                <span class="stgi-note" data-role="totals"></span>
+            </div>
+            <table class="stgi-table"><thead>
+                <tr><th>名称</th><th>范围</th><th>版本</th><th>占用</th><th>状态</th><th>操作</th></tr>
+            </thead><tbody data-role="rows"></tbody></table>
+            <div class="stgi-note" data-role="parkedNote"></div>
+        </div>`);
+
+    const q = role => section.querySelector(`[data-role="${role}"]`);
+    const SCOPE_LABEL = { local: '用户扩展', global: '全局扩展', parked: '已停用', plugin: '服务端插件' };
+
+    async function reload() {
+        const rows = q('rows');
+        rows.innerHTML = '<tr><td colspan="6">扫描中…</td></tr>';
+        try {
+            const { entries, totals, parkedDir } = await api('/governance');
+            q('totals').textContent =
+                `本地扩展共 ${humanBytes(totals.localBytes)}；停用区共 ${humanBytes(totals.parkedBytes)}` +
+                (totals.parkedBytes > 0 ? `（彻底清理停用副本可释放 ${humanBytes(totals.parkedBytes)}）` : '');
+            q('parkedNote').textContent = parkedDir ? `停用区位置: ${parkedDir}` : '';
+            rows.innerHTML = '';
+            if (entries.length === 0) {
+                rows.innerHTML = '<tr><td colspan="6">未发现任何扩展/插件</td></tr>';
+                return;
+            }
+            for (const entry of entries) {
+                const badges = [];
+                if (entry.scope === 'parked') {
+                    badges.push('<span class="stgi-badge warn">已停用</span>');
+                    if (entry.parkedAt) badges.push(`<span class="stgi-note">${esc(entry.parkedAt.slice(0, 19).replace('T', ' '))}</span>`);
+                } else if (entry.scope === 'local') {
+                    badges.push('<span class="stgi-badge good">启用中</span>');
+                }
+                if (entry.isRepo === false) badges.push('<span class="stgi-badge warn">非git</span>');
+                else if (entry.dirtyCount > 0) badges.push(`<span class="stgi-badge warn">本地改动×${entry.dirtyCount}</span>`);
+
+                const actions = [];
+                if (entry.scope === 'local') {
+                    actions.push('<button class="stgi-btn" data-act="disable">停用</button>');
+                }
+                if (entry.scope === 'parked') {
+                    actions.push('<button class="stgi-btn" data-act="enable">启用</button>');
+                    actions.push('<label><input type="checkbox" data-role="confirmDel" /> 确认删除</label>');
+                    actions.push('<button class="stgi-btn" data-act="purge">彻底清理</button>');
+                }
+                const row = el(`<tr>
+                    <td>${esc(entry.name)}</td>
+                    <td>${SCOPE_LABEL[entry.scope] || esc(entry.scope)}</td>
+                    <td>${esc(entry.version || '?')}</td>
+                    <td>${humanBytes(entry.bytes)}</td>
+                    <td>${badges.join(' ') || '—'}</td>
+                    <td>${actions.join(' ') || '—'}</td>
+                </tr>`);
+                row.querySelector('[data-act="disable"]')?.addEventListener('click', async event => {
+                    event.target.disabled = true;
+                    try {
+                        const result = await api('/governance/disable', { body: { name: entry.name } });
+                        toast(`已停用 ${result.name}，刷新页面后生效（数据完整保存在停用区）`, 'success');
+                        reload();
+                    } catch (error) {
+                        toast(String(error.message || error), 'error');
+                        event.target.disabled = false;
+                    }
+                });
+                row.querySelector('[data-act="enable"]')?.addEventListener('click', async event => {
+                    event.target.disabled = true;
+                    try {
+                        await api('/governance/enable', { body: { name: entry.name } });
+                        toast(`已启用 ${entry.name}，刷新页面后生效`, 'success');
+                        reload();
+                    } catch (error) {
+                        toast(String(error.message || error), 'error');
+                        event.target.disabled = false;
+                    }
+                });
+                row.querySelector('[data-act="purge"]')?.addEventListener('click', async event => {
+                    if (row.querySelector('[data-role="confirmDel"]')?.checked !== true) {
+                        toast('删除不可恢复：请先勾选该行的「确认删除」', 'error');
+                        return;
+                    }
+                    event.target.disabled = true;
+                    try {
+                        const result = await api('/governance/parked', { method: 'DELETE', body: { name: entry.name, confirm: true } });
+                        toast(`已彻底清理 ${result.name}，释放 ${humanBytes(result.freedBytes)}`, 'success');
+                        reload();
+                    } catch (error) {
+                        toast(String(error.message || error), 'error');
+                        event.target.disabled = false;
+                    }
+                });
+                rows.append(row);
+            }
+        } catch (error) {
+            rows.innerHTML = `<tr><td colspan="6">加载失败: ${esc(String(error.message || error))}</td></tr>`;
+        }
+    }
+
+    q('reload').addEventListener('click', reload);
+    reload();
+    return section;
+}
+
 function tabBackups(entry) {
     const section = el(`
         <div>
@@ -652,6 +760,7 @@ function openMain() {
         ['站点凭据', () => tabSites(root)],
         ['私有安装', () => tabInstall(root)],
         ['诊断与修复', () => tabDiagnose(root)],
+        ['扩展治理', () => tabGovernance(root)],
         ['设置', () => tabSettings(root)],
     ];
     const bar = el('<div class="stgi-tabs"></div>');

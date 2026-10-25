@@ -11,6 +11,7 @@ import { updateRepo, listBackups, recoverBackup } from './ops/update.js';
 import { npmInstall } from './ops/deps.js';
 import { diagnoseAll } from './ops/diagnose.js';
 import { listDuplicates, removeLocalDuplicate, runAutoDedup } from './ops/dedup.js';
+import { disableExtension, enableExtension, listGovernance, purgeParked } from './ops/governance.js';
 import { atomicWriteJson, dirNameFromUrl, httpError, readJsonOr, redactUrl, sanitizeDirName } from './util.js';
 
 const DEVICE_FLOW_TTL_MS = 10 * 60 * 1000;
@@ -413,6 +414,34 @@ export function createRouter(context) {
         assertForceAllowed(request);
         const dirs = dirsForRequest(identity, request, context.dirs);
         return withPermit(dirs.localExtensionsDir, () => runAutoDedup({ dirs }));
+    }));
+
+    // ---------- governance ----------
+    router.get('/governance', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        return listGovernance({ dirs });
+    }));
+
+    router.post('/governance/disable', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        const targetPath = path.join(path.dirname(dirs.localExtensionsDir), 'extensions-disabled', sanitizeDirName(String(request.body?.name || '')));
+        return withPermit(targetPath, () => disableExtension({ name: String(request.body?.name || ''), dirs }));
+    }));
+
+    router.post('/governance/enable', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        const targetPath = path.join(dirs.localExtensionsDir, sanitizeDirName(String(request.body?.name || '')));
+        return withPermit(targetPath, () => enableExtension({ name: String(request.body?.name || ''), dirs }));
+    }));
+
+    router.delete('/governance/parked', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        const targetPath = path.join(path.dirname(dirs.localExtensionsDir), 'extensions-disabled', sanitizeDirName(String(request.body?.name || '')));
+        return withPermit(targetPath, () => purgeParked({
+            name: String(request.body?.name || ''),
+            confirm: request.body?.confirm === true,
+            dirs,
+        }));
     }));
 
     return router;
