@@ -42,4 +42,23 @@ if (result.status !== 0) {
     console.error('npm install 失败；插件目录仍可用，但需手动安装依赖后重启酒馆。');
     process.exit(result.status ?? 1);
 }
+
+// Server plugins must be enabled in the host config; detect and advise
+// (never edit the instance's config.yaml ourselves).
+const configPath = path.join(target, 'config.yaml');
+try {
+    const config = fs.readFileSync(configPath, 'utf8');
+    const match = config.match(/^enableServerPlugins:\s*(\S+)\s*$/m);
+    if (match && !/^(true|yes|on|1)$/i.test(match[1])) {
+        console.warn('提示：当前酒馆 config.yaml 中 enableServerPlugins 为关闭状态。');
+        console.warn('服务端插件需要开启才能加载：请把 config.yaml 中的 enableServerPlugins 改为 true 后重启酒馆。');
+    } else if (!match) {
+        console.warn('提示：未在 config.yaml 中找到 enableServerPlugins 配置项（默认关闭）。');
+        console.warn('如插件未被加载，请手动添加 enableServerPlugins: true 后重启酒馆。');
+    } else {
+        console.log('已检测到 enableServerPlugins: true，插件将在重启后加载。');
+    }
+} catch {
+    /* config unreadable — skip the advisory */
+}
 console.log('安装完成。重启酒馆后，扩展菜单会出现「Git 源管理」。');

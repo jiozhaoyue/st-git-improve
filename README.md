@@ -27,6 +27,9 @@ node scripts/install-to-tavern.mjs <你的酒馆目录>
 重启酒馆。左侧扩展菜单（Extensions）出现 **「Git 源管理」**。
 前端面板由插件在首次启动时自动装入 `data/<user>/extensions/st-git-improve/`。
 
+**前提**：酒馆需开启服务端插件——`config.yaml` 中 `enableServerPlugins: true`
+（安装脚本会自动检测并提示）。脚本会原样提示，不改动你的 config.yaml。
+
 ## 使用
 
 1. **站点凭据**：添加站点 → 选类型 → 保存 PAT，或账密登录（Gitea/Forgejo 自动铸造 token），
