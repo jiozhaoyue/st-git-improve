@@ -7,7 +7,7 @@ const API = '/api/plugins/st-git-improve';
 const SITE_TYPES = [
     { id: 'gitea', label: 'Gitea / Forgejo（含自建）', needsBase: true },
     { id: 'github', label: 'GitHub', needsBase: false },
-    { id: 'gitlab', label: 'GitLab', needsBase: false },
+    { id: 'gitlab', label: 'GitLab（留空 = gitlab.com，自建请填地址）', needsBase: true },
     { id: 'gitee', label: 'Gitee', needsBase: false },
 ];
 

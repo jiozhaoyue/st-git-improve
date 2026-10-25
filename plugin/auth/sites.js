@@ -248,7 +248,10 @@ export const adapters = {
 export function getAdapter(type) {
     const adapter = adapters[String(type || '')];
     if (!adapter) {
-        throw new Error(`未知站点类型: ${type}`);
+        const error = new Error(`未知站点类型: ${type}`);
+        // @ts-ignore
+        error.statusCode = 400;
+        throw error;
     }
     return adapter;
 }
