@@ -21,7 +21,8 @@ describe('dirsForRequest', () => {
 
     it('anchors host-relative extension dirs at the tavern root', () => {
         const identity = { mode: 'host' };
-        const request = { user: { directories: { extensions: 'data\\user1\\extensions' } } };
+        // separators as the host would send them on this platform
+        const request = { user: { directories: { extensions: path.join('data', 'user1', 'extensions') } } };
         const dirs = dirsForRequest(identity, request, contextDirs);
         assert.equal(dirs.localExtensionsDir, path.join(tavernRoot, 'data', 'user1', 'extensions'));
         assert.ok(path.isAbsolute(dirs.localExtensionsDir), 'result is absolute');
