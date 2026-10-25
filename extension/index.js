@@ -232,7 +232,7 @@ function tabSites(root) {
     return section;
 }
 
-function tabInstall(root) {
+async function tabInstall(root) {
     const section = el(`
         <div>
             <div class="stgi-note">安装私有/任意 http(s) git 仓库。目标站点已在「站点凭据」中保存登录时自动认证。前端扩展装到当前用户，服务端插件装到 plugins/。</div>
@@ -551,7 +551,7 @@ function tabGovernance(root) {
                 else if (entry.dirtyCount > 0) badges.push(`<span class="stgi-badge warn">本地改动×${entry.dirtyCount}</span>`);
 
                 const actions = [];
-                if (entry.scope === 'local') {
+                if (entry.scope === 'local' && entry.name !== 'st-git-improve') {
                     actions.push('<button class="stgi-btn" data-act="disable">停用</button>');
                 }
                 if (entry.scope === 'parked') {
@@ -855,7 +855,9 @@ function openMain() {
     function show(index) {
         bar.querySelectorAll('.stgi-tab').forEach((tab, i) => tab.classList.toggle('active', i === index));
         body.innerHTML = '<div class="stgi-note">加载中…</div>';
-        tabs[index][1]().then(section => {
+        // Tab factories may return the section element synchronously or a
+        // Promise — normalize so both work.
+        Promise.resolve(tabs[index][1]()).then(section => {
             body.innerHTML = '';
             body.append(section);
         });
@@ -871,18 +873,71 @@ function openMain() {
 
 // ---------------------------------------------------------------- entry
 
-export function initExtension() {
-    const menu = document.querySelector('#extensionsMenu');
-    if (!menu) {
-        console.warn('[st-git-improve] #extensionsMenu not found; panel entry unavailable');
-        return;
-    }
-    const item = el(`<div class="list-group-item flex-container flexAlignCenter stgi-menu-item" id="st-git-improve-menu" title="私有源登录安装 / 依赖修复 / 冲突恢复（补充面板）">
+const MENU_ITEM_ID = 'st-git-improve-menu';
+/** A host extension may rebuild the extensions menu; give up re-adding after this many removals. */
+const MAX_REATTACH = 3;
+
+function buildMenuItem() {
+    const item = el(`<div class="list-group-item flex-container flexAlignCenter stgi-menu-item" id="${MENU_ITEM_ID}" title="私有源登录安装 / 依赖修复 / 冲突恢复（补充面板）">
         <i class="fa-solid fa-code-branch"></i>
         <span>Git 源管理</span>
     </div>`);
     item.addEventListener('click', openMain);
-    menu.append(item);
+    return item;
+}
+
+/** True when the item is present (or was just added). */
+function ensureMenuItem() {
+    if (document.getElementById(MENU_ITEM_ID)) {
+        return true;
+    }
+    const menu = document.querySelector('#extensionsMenu');
+    if (!menu) {
+        return false;
+    }
+    menu.append(buildMenuItem());
+    return true;
+}
+
+/**
+ * The host builds #extensionsMenu asynchronously and other extensions may
+ * rebuild it later, so registration must not depend on execution order:
+ * watch the DOM until the menu exists, then keep a bounded re-attach guard.
+ */
+export function initExtension() {
+    if (!ensureMenuItem()) {
+        const observer = new MutationObserver(() => {
+            if (ensureMenuItem()) {
+                observer.disconnect();
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        const timer = setInterval(() => {
+            if (ensureMenuItem()) {
+                clearInterval(timer);
+                observer.disconnect();
+            }
+        }, 500);
+        setTimeout(() => {
+            clearInterval(timer);
+            observer.disconnect();
+        }, 30000);
+    }
+
+    const menu = document.querySelector('#extensionsMenu');
+    if (menu) {
+        let reattachments = 0;
+        new MutationObserver(() => {
+            if (reattachments < MAX_REATTACH && !document.getElementById(MENU_ITEM_ID) &&
+                document.querySelector('#extensionsMenu') === menu) {
+                reattachments += 1;
+                menu.append(buildMenuItem());
+                console.warn('[st-git-improve] menu item was removed; re-attached ' +
+                    `(${reattachments}/${MAX_REATTACH})`);
+            }
+        }).observe(menu, { childList: true });
+    }
+
     console.log('[st-git-improve] panel registered');
 }
 
