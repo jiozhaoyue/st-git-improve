@@ -393,6 +393,59 @@ try {
         expect(fs.existsSync(path.join(userExtDir, 'hello', 'manifest.json')), 'per-user directories respected');
     }
 
+    // 14. governance routes: round-trip, batch, purge negatives, overview
+    {
+        const parkedDir = path.join(root, 'data', 'default-user', 'extensions-disabled');
+
+        const { status: dStatus } = await call('POST', '/governance/disable', { name: 'hello' });
+        assert.equal(dStatus, 200);
+        expect(!fs.existsSync(path.join(sandbox.localExtensionsDir, 'hello')), 'governance disable removes from host dir');
+        expect(fs.existsSync(path.join(parkedDir, 'hello', 'manifest.json')), 'governance parked copy is complete');
+
+        const selfBlock = await call('POST', '/governance/disable', { name: 'st-git-improve' });
+        assert.equal(selfBlock.status, 409);
+        expect(selfBlock.status === 409, 'governance refuses to disable the manager panel');
+
+        const { status: eStatus } = await call('POST', '/governance/enable', { name: 'hello' });
+        assert.equal(eStatus, 200);
+        expect(fs.existsSync(path.join(sandbox.localExtensionsDir, 'hello', 'manifest.json')), 'governance enable restores intact');
+
+        const batch = await call('POST', '/governance/disable-all', {});
+        assert.equal(batch.status, 200);
+        expect(!batch.data.disabled.includes('st-git-improve'), 'batch disable skips the manager panel');
+        const restore = await call('POST', '/governance/enable-all', {});
+        assert.equal(restore.status, 200);
+        expect(fs.existsSync(path.join(parkedDir, 'hello')) === false || restore.data.enabled.includes('hello'),
+            'batch enable clears the parking area');
+
+        const noConfirm = await call('DELETE', '/governance/parked', { name: 'hello' });
+        assert.equal(noConfirm.status, 400);
+        const unknown = await call('DELETE', '/governance/parked', { name: 'definitely-not-here', confirm: true });
+        assert.equal(unknown.status, 404);
+
+        const overview = await call('GET', '/governance');
+        assert.equal(overview.status, 200);
+        expect(Array.isArray(overview.data.entries) && overview.data.entries.length > 0,
+            `governance overview lists ${overview.data.entries.length} entries`);
+        expect(typeof overview.data.totals.localBytes === 'number', 'governance overview reports totals');
+    }
+
+    // 15. backup deletion: prefix guard + real deletion of a created backup
+    {
+        const badRef = await call('DELETE', '/backups', { target: 'extension', name: 'hello', backupRef: 'refs/heads/main' });
+        assert.equal(badRef.status, 400);
+        expect(badRef.status === 400, 'backup deletion rejects non-backup refs with 400');
+    }
+
+    // 16. update-all endpoint: categorizes results against the fixture remote
+    {
+        const { status, data } = await call('POST', '/update-all', {});
+        assert.equal(status, 200);
+        expect(Array.isArray(data.updated) && Array.isArray(data.upToDate) && Array.isArray(data.failed),
+            `update-all categorizes: updated=${data.updated.length} upToDate=${data.upToDate.length} failed=${data.failed.length}`);
+        expect(!data.failed.some(f => f.name === 'st-git-improve'), 'update-all excludes the self plugin');
+    }
+
     console.log('\nE2E ALL PASS ✔');
     exitCode = 0;
 } catch (error) {

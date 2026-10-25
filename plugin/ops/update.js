@@ -117,6 +117,9 @@ export async function recoverBackup({ dir, backupRef }) {
  * @param {{ dir: string, backupRef: string }} options
  */
 export async function removeBackup({ dir, backupRef }) {
+    if (!String(backupRef || '').startsWith('refs/git-improve/backup/')) {
+        throw httpError(400, '仅允许删除 refs/git-improve/backup/ 前缀的备份 ref');
+    }
     await engine.deleteBackupRef({ dir, backupRef });
     return { ok: true, ref: backupRef };
 }
