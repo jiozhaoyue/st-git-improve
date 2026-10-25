@@ -73,7 +73,7 @@ ST_GIT_IMPROVE_GITLAB_CLIENT_ID=...   # GitLab 应用 (勾选 read_repository/re
 - `data/git-improve.json`：`{ "user": "default-user", "registry": "https://registry.npmmirror.com" }`
   （`registry` 用于所有 npm 依赖安装；国内环境建议镜像源）
 - `ST_GIT_IMPROVE_REGISTRY` 环境变量优先于配置文件。
-- `ST_GIT_IMPROVE_USER` 指定用户目录（默认 `default-user`；MVP 面向单用户模式）。
+- `ST_GIT_IMPROVE_USER` 指定降级/单用户模式的数据目录（默认 `default-user`；宿主多用户模式自动按会话识别）。
 
 ## 安全
 
@@ -95,9 +95,10 @@ npm run test:integration # 无 git 二进制环境下的 clone 集成测试（�
 备份/重建/恢复的本地 git 语义（含"本地 dirty 不阻塞更新"）、设备码轮询状态机、
 扩展治理（停用/启用搬移、数据保全、清理确认、名称清洗、台账封顶）。
 
-## 已知边界（MVP）
+## 已知边界
 
-- 单用户（`default-user`）；多用户认证集成为二期。
+- 多用户：宿主开启多用户时按登录会话识别身份与数据目录（治理/安装/更新均落在调用者自己的目录，
+  已有宿主身份集成与按用户目录的 E2E 覆盖）；`ST_GIT_IMPROVE_USER` 指定降级/单用户模式的数据目录。
 - SSH 桥（isomorphic-git 原生不支持 SSH）为二期；当前粘贴 SSH 地址时请改用 https+token。
 - Gitee 无设备码流程；账号密码换 token 依赖应用注册，MVP 仅 PAT/userinfo。
 - 本插件自身的更新走宿主原生插件更新（公开仓库），不依赖本插件。
