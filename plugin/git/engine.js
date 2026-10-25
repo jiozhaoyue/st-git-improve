@@ -117,11 +117,17 @@ export async function remoteUrl({ dir }) {
 
 /**
  * Rows where a tracked file differs from HEAD (modified, staged or deleted).
- * Reuses the predicate proven in the host codebase.
+ * Reuses the predicate proven in the host codebase. The workdir walk skips
+ * node_modules — never tracked in practice, and hashing them made scans of
+ * large extensions (hundreds of MB) take seconds each.
  * @param {{ dir: string }} options
  */
 export async function dirtyTrackedFiles({ dir }) {
-    const matrix = await git.statusMatrix({ fs, dir });
+    const matrix = await git.statusMatrix({
+        fs,
+        dir,
+        filter: file => !file.startsWith('node_modules') && !file.includes('/node_modules/'),
+    });
     return matrix
         .filter(([, head, workdir, stage]) => Number(head) > 0 && (Number(workdir) !== Number(head) || Number(stage) !== Number(head)))
         .map(([file]) => file);

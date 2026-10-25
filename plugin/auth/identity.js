@@ -80,5 +80,7 @@ export function dirsForRequest(identity, request, contextDirs) {
     if (!userExtensions) {
         return contextDirs;
     }
-    return { ...contextDirs, localExtensionsDir: userExtensions };
+    // The host may hand out data-root-relative directories; every op expects
+    // absolute paths, so anchor them at the tavern root.
+    return { ...contextDirs, localExtensionsDir: path.resolve(tavernRoot, userExtensions) };
 }

@@ -50,39 +50,52 @@ function parkedAtByName(registryFile) {
 
 async function scanScope(scope, baseDir, { registryFile, skipNames = [] }) {
     const parkedAt = registryFile ? parkedAtByName(registryFile) : null;
-    const entries = [];
     if (!fs.existsSync(baseDir)) {
-        return entries;
+        return [];
     }
     const skip = new Set(skipNames);
-    for (const item of fs.readdirSync(baseDir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-        if (!item.isDirectory() || skip.has(item.name)) {
-            continue;
+    const dirs = fs.readdirSync(baseDir, { withFileTypes: true })
+        .filter(item => item.isDirectory() && !skip.has(item.name))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    // statusMatrix is fs-bound; a small worker pool keeps large instances snappy.
+    const CONCURRENCY = 8;
+    const entries = new Array(dirs.length);
+    let cursor = 0;
+    async function worker() {
+        while (cursor < dirs.length) {
+            const index = cursor;
+            cursor += 1;
+            const item = dirs[index];
+            const dir = path.join(baseDir, item.name);
+            let manifest = null;
+            try {
+                manifest = readJsonOr(path.join(dir, 'manifest.json'), null);
+            } catch {
+                manifest = null;
+            }
+            let dirtyCount = 0;
+            try {
+                dirtyCount = (await engine.dirtyTrackedFiles({ dir })).length;
+            } catch {
+                dirtyCount = -1; // not a git repo
+            }
+            const entry = {
+                scope,
+                name: item.name,
+                version: manifest && typeof manifest === 'object' ? String(manifest.version || '') : '',
+                bytes: await dirSizeBytesAsync(dir),
+                isRepo: dirtyCount !== -1,
+                dirtyCount,
+            };
+            if (scope === 'parked' && parkedAt) {
+                entry.parkedAt = parkedAt.get(item.name) || '';
+            }
+            entries[index] = entry;
         }
-        const dir = path.join(baseDir, item.name);
-        let manifest = null;
-        try {
-            manifest = readJsonOr(path.join(dir, 'manifest.json'), null);
-        } catch {
-            manifest = null;
-        }
-        let dirtyCount = 0;
-        try {
-            dirtyCount = (await engine.dirtyTrackedFiles({ dir })).length;
-        } catch {
-            dirtyCount = -1; // not a git repo
-        }
-        entries.push({
-            scope,
-            name: item.name,
-            version: manifest && typeof manifest === 'object' ? String(manifest.version || '') : '',
-            bytes: dirSizeBytes(dir),
-            isRepo: dirtyCount !== -1,
-            dirtyCount,
-            ...(scope === 'parked' && parkedAt ? { parkedAt: parkedAt.get(item.name) || '' } : {}),
-        });
     }
-    return entries;
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, dirs.length) }, worker));
+    return entries.filter(Boolean);
 }
 
 /**
@@ -117,6 +130,46 @@ export function dirSizeBytes(dir) {
 }
 
 /**
+ * Non-blocking variant of dirSizeBytes for scan paths: async walk + stat so a
+ * live server's event loop is never blocked by a 300 MB node_modules tree.
+ * @param {string} dir
+ * @returns {Promise<number>}
+ */
+export async function dirSizeBytesAsync(dir) {
+    const fsp = fs.promises;
+    let files;
+    try {
+        const dirents = await fsp.readdir(dir, { withFileTypes: true, recursive: true });
+        files = dirents.filter(entry => entry.isFile());
+    } catch {
+        return 0;
+    }
+    let total = 0;
+    let cursor = 0;
+    async function worker() {
+        while (cursor < files.length) {
+            const index = cursor;
+            cursor += 1;
+            const entry = files[index];
+            // parentPath mirrors the dir as passed (absolute in → absolute out,
+            // relative in → relative to CWD), so resolving against it alone is
+            // always right; mixing in a resolved base would double-append.
+            const full = path.resolve(entry.parentPath ?? entry.path ?? dir, entry.name);
+            try {
+                const stat = await fsp.stat(full);
+                if (stat.isFile()) {
+                    total += stat.size;
+                }
+            } catch {
+                /* vanished concurrently */
+            }
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(16, files.length) }, worker));
+    return total;
+}
+
+/**
  * Move a directory into/out of the parking area. rename is atomic on the
  * same volume; fall back to copy+delete for exotic deployments.
  * @param {string} from @param {string} to
@@ -133,9 +186,23 @@ function moveDir(from, to) {
 
 /**
  * Governance overview: all extension assets across scopes + disk totals.
+ * Results are cached briefly (the scan hashes every repo's worktree); every
+ * mutating action clears the cache so the next list is fresh.
  * @param {{ dirs: object }} options
  */
+const SCAN_TTL_MS = 60_000;
+const scanCache = new Map();
+
+export function invalidateGovernanceCache() {
+    scanCache.clear();
+}
+
 export async function listGovernance({ dirs }) {
+    const key = [dirs.localExtensionsDir, dirs.globalExtensionsDir, dirs.pluginsDir].join('|');
+    const hit = scanCache.get(key);
+    if (hit && Date.now() < hit.expiresAt) {
+        return hit.value;
+    }
     const registryFile = ledgerFileFor(dirs);
     const parkedDir = parkedDirFor(dirs);
     const [local, global, parked, plugins] = await Promise.all([
@@ -144,7 +211,7 @@ export async function listGovernance({ dirs }) {
         scanScope('parked', parkedDir, { registryFile }),
         scanScope('plugin', dirs.pluginsDir, { registryFile, skipNames: [path.basename(dirs.selfPluginDir)] }),
     ]);
-    return {
+    const overview = {
         parkedDir,
         entries: [...local, ...global, ...parked, ...plugins],
         totals: {
@@ -152,6 +219,8 @@ export async function listGovernance({ dirs }) {
             parkedBytes: parked.reduce((sum, entry) => sum + entry.bytes, 0),
         },
     };
+    scanCache.set(key, { value: overview, expiresAt: Date.now() + SCAN_TTL_MS });
+    return overview;
 }
 
 /** @param {string} name */
@@ -189,6 +258,7 @@ export function disableExtension({ name, dirs }) {
         manifest = null;
     }
     moveDir(localPath, parkedPath);
+    invalidateGovernanceCache();
     recordAction(ledgerFileFor(dirs), {
         action: 'disable',
         name: clean,
@@ -214,6 +284,7 @@ export function enableExtension({ name, dirs }) {
     }
     const bytes = dirSizeBytes(parkedPath);
     moveDir(parkedPath, localPath);
+    invalidateGovernanceCache();
     recordAction(ledgerFileFor(dirs), { action: 'enable', name: clean, bytes });
     return { name: clean, bytes };
 }
@@ -234,6 +305,7 @@ export function purgeParked({ name, confirm, dirs }) {
     }
     const freedBytes = dirSizeBytes(parkedPath);
     fs.rmSync(parkedPath, { recursive: true, force: true });
+    invalidateGovernanceCache();
     recordAction(ledgerFileFor(dirs), { action: 'purge', name: clean, bytes: freedBytes });
     return { name: clean, freedBytes };
 }
