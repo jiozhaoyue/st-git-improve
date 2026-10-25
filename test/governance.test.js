@@ -61,7 +61,10 @@ describe('governance', () => {
         fs.writeFileSync(path.join(dirs.pluginsDir, 'some-plugin', 'index.js'), '// plugin');
         fs.writeFileSync(path.join(dirs.selfPluginDir, 'index.js'), '// self');
         const overview = await listGovernance({ dirs });
-        const byScope = Object.groupBy(overview.entries, entry => entry.scope);
+        const byScope = {};
+        for (const entry of overview.entries) {
+            (byScope[entry.scope] ??= []).push(entry);
+        }
         assert.deepEqual(byScope.local.map(entry => entry.name), ['demo-ext']);
         assert.deepEqual(byScope.global.map(entry => entry.name), ['global-ext']);
         assert.deepEqual(byScope.plugin.map(entry => entry.name), ['some-plugin'], 'self plugin dir is excluded');
