@@ -7,11 +7,11 @@ import { dirsForRequest, isAdminRequest } from './auth/identity.js';
 import { agentForUrl, effectiveProxyMode, invalidateSettingsCache } from './git/proxy-http.js';
 import { pluginDataDir } from './paths.js';
 import { baseDirFor, installFromUrl } from './ops/install.js';
-import { updateRepo, listBackups, recoverBackup } from './ops/update.js';
+import { updateRepo, listBackups, recoverBackup, removeBackup, updateAllRepos } from './ops/update.js';
 import { npmInstall } from './ops/deps.js';
 import { diagnoseAll } from './ops/diagnose.js';
 import { listDuplicates, removeLocalDuplicate, runAutoDedup } from './ops/dedup.js';
-import { disableExtension, enableExtension, listGovernance, purgeParked } from './ops/governance.js';
+import { disableExtension, enableExtension, disableAllExtensions, enableAllExtensions, listGovernance, purgeParked } from './ops/governance.js';
 import { atomicWriteJson, dirNameFromUrl, httpError, readJsonOr, redactUrl, sanitizeDirName } from './util.js';
 
 const DEVICE_FLOW_TTL_MS = 10 * 60 * 1000;
@@ -342,7 +342,19 @@ export function createRouter(context) {
             registry: context.registry,
             runDeps: String(body.target || '') === 'plugin',
             log: line => console.info(`[st-git-improve] ${line}`),
+            resolveAuth: remote => context.store.authResolverForUrl(remote),
         }));
+    }));
+
+    router.post('/update-all', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        return updateAllRepos({
+            dirs,
+            selfPluginDir: context.selfPluginDir,
+            registry: context.registry,
+            log: line => console.info(`[st-git-improve] ${line}`),
+            resolveAuth: remote => context.store.authResolverForUrl(remote),
+        });
     }));
 
     router.post('/deps', wrap(async (request, response) => {
@@ -373,6 +385,15 @@ export function createRouter(context) {
         const dirs = dirsForRequest(identity, request, context.dirs);
         const dir = resolveTargetDir(String(request.query.target || ''), String(request.query.name || ''), dirs);
         return { backups: await listBackups({ dir }) };
+    }));
+
+    router.delete('/backups', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        const dir = resolveTargetDir(String(request.body?.target || ''), String(request.body?.name || ''), dirs);
+        return withPermit(dir, () => removeBackup({
+            dir,
+            backupRef: String(request.body?.backupRef || ''),
+        }));
     }));
 
     router.get('/diagnose', wrap(async (request, response) => {
@@ -442,6 +463,16 @@ export function createRouter(context) {
             confirm: request.body?.confirm === true,
             dirs,
         }));
+    }));
+
+    router.post('/governance/disable-all', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        return withPermit(dirs.localExtensionsDir, () => disableAllExtensions({ dirs }));
+    }));
+
+    router.post('/governance/enable-all', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        return withPermit(dirs.localExtensionsDir, () => enableAllExtensions({ dirs }));
     }));
 
     return router;

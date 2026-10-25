@@ -11,9 +11,9 @@ import { npmInstall, depsMissing } from './deps.js';
  *   candidate preflight → advance branch ref → force checkout.
  * Local changes never block the update and are never silently lost.
  *
- * @param {{ dir: string, registry?: string, runDeps?: boolean, log?: (line: string) => void }} options
+ * @param {{ dir: string, registry?: string, runDeps?: boolean, log?: (line: string) => void, resolveAuth?: (remote: string) => (() => object | undefined) | undefined }} options
  */
-export async function updateRepo({ dir, registry, runDeps, log }) {
+export async function updateRepo({ dir, registry, runDeps, log, resolveAuth }) {
     if (!fs.existsSync(path.join(dir, '.git'))) {
         throw httpError(409, '该目录不是 git 仓库（无 .git），请重装');
     }
@@ -23,11 +23,14 @@ export async function updateRepo({ dir, registry, runDeps, log }) {
     if (!branch || !remote) {
         throw httpError(409, '无法确定分支或远端地址，请重装该扩展');
     }
+    // Private sources need credentials on every network call — resolve them
+    // for this repo's remote the same way install does.
+    const authResolver = resolveAuth?.(remote);
 
     const localOid = await engine.resolveHead({ dir });
     let remoteOid = '';
     try {
-        const refs = await engine.listRemoteBranches({ url: remote });
+        const refs = await engine.listRemoteBranches({ url: remote, authResolver });
         remoteOid = refs.find(ref => ref.ref === `refs/heads/${branch}`)?.oid || '';
     } catch (error) {
         throw httpError(502, `无法访问远端 ${redactUrl(remote)}: ${error.message}`);
@@ -38,7 +41,7 @@ export async function updateRepo({ dir, registry, runDeps, log }) {
     }
 
     log?.(`fetch ${branch} → ${remoteOid.slice(0, 7)}`);
-    await engine.fetchBranch({ dir, url: remote, branch });
+    await engine.fetchBranch({ dir, url: remote, branch, authResolver });
 
     const candidateOid = (await engine.resolveRemoteTracking({ dir, branch })) || remoteOid;
     if (candidateOid === localOid) {
@@ -108,4 +111,71 @@ export async function recoverBackup({ dir, backupRef }) {
         deps = { missing: true };
     }
     return { oid, deps };
+}
+
+/**
+ * @param {{ dir: string, backupRef: string }} options
+ */
+export async function removeBackup({ dir, backupRef }) {
+    await engine.deleteBackupRef({ dir, backupRef });
+    return { ok: true, ref: backupRef };
+}
+
+/**
+ * Update every git-managed directory across scopes. One failure never stops
+ * the batch — per-entry results are collected for the caller.
+ * @param {{ dirs: object, selfPluginDir: string, registry?: string, log?: (line: string) => void, resolveAuth?: (remote: string) => (() => object | undefined) | undefined }} options
+ */
+export async function updateAllRepos({ dirs, selfPluginDir, registry, log, resolveAuth }) {
+    const groups = [
+        { target: 'extension', base: dirs.localExtensionsDir },
+        { target: 'global', base: dirs.globalExtensionsDir },
+        { target: 'plugin', base: dirs.pluginsDir },
+    ];
+    /** @type {Array<object>} */
+    const updated = [];
+    /** @type {string[]} */
+    const upToDate = [];
+    /** @type {Array<{ name: string, target: string, error: string }>} */
+    const failed = [];
+    for (const group of groups) {
+        if (!fs.existsSync(group.base)) {
+            continue;
+        }
+        for (const entry of fs.readdirSync(group.base, { withFileTypes: true })) {
+            if (!entry.isDirectory() || entry.name.startsWith('.')) {
+                continue;
+            }
+            const dir = path.join(group.base, entry.name);
+            if (path.resolve(dir) === path.resolve(selfPluginDir)) {
+                continue;
+            }
+            if (!fs.existsSync(path.join(dir, '.git'))) {
+                continue; // not managed by git — nothing to update
+            }
+            try {
+                const result = await updateRepo({
+                    dir,
+                    registry,
+                    runDeps: group.target === 'plugin',
+                    log,
+                    resolveAuth,
+                });
+                if (result.upToDate) {
+                    upToDate.push(entry.name);
+                } else {
+                    updated.push({
+                        name: entry.name,
+                        target: group.target,
+                        from: result.from,
+                        oid: result.oid,
+                        backupRef: result.backupRef,
+                    });
+                }
+            } catch (error) {
+                failed.push({ name: entry.name, target: group.target, error: String(error?.message || error) });
+            }
+        }
+    }
+    return { updated, upToDate, failed };
 }

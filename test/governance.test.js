@@ -5,7 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
+    disableAllExtensions,
     disableExtension,
+    enableAllExtensions,
     enableExtension,
     listGovernance,
     purgeParked,
@@ -153,5 +155,44 @@ describe('governance', () => {
         const ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
         assert.equal(ledger.actions.length, 200);
         assert.equal(ledger.actions.at(-1).name, 'demo-ext');
+    });
+
+    it('disableAll parks every local extension but the manager panel; enableAll brings them back', () => {
+        const { dirs } = fixture;
+        fs.mkdirSync(path.join(dirs.localExtensionsDir, 'second-ext'), { recursive: true });
+        fs.writeFileSync(path.join(dirs.localExtensionsDir, 'second-ext', 'manifest.json'), '{"version":"2.0.0"}');
+        fs.mkdirSync(path.join(dirs.localExtensionsDir, SELF_PANEL_NAME), { recursive: true });
+        fs.writeFileSync(path.join(dirs.localExtensionsDir, SELF_PANEL_NAME, 'index.js'), '// panel');
+
+        const batch = disableAllExtensions({ dirs });
+        assert.deepEqual(batch.disabled.sort(), ['demo-ext', 'second-ext']);
+        assert.deepEqual(batch.skipped, [{ name: SELF_PANEL_NAME, reason: '本插件管理面板不允许停用' }]);
+        assert.equal(fs.existsSync(path.join(dirs.localExtensionsDir, 'demo-ext')), false);
+        assert.equal(fs.existsSync(path.join(dirs.localExtensionsDir, SELF_PANEL_NAME)), true, 'panel stays');
+
+        const back = enableAllExtensions({ dirs });
+        assert.deepEqual(back.enabled.sort(), ['demo-ext', 'second-ext']);
+        assert.equal(back.skipped.length, 0);
+        assert.equal(fs.existsSync(path.join(dirs.localExtensionsDir, 'demo-ext')), true);
+    });
+
+    it('batch ops collect conflicts instead of failing the whole batch', () => {
+        const { dirs } = fixture;
+        fs.mkdirSync(path.join(dirs.localExtensionsDir, 'second-ext'), { recursive: true });
+        // pre-create a conflicting parked copy for second-ext
+        const parkedBase = path.join(path.dirname(dirs.localExtensionsDir), 'extensions-disabled');
+        fs.mkdirSync(path.join(parkedBase, 'second-ext'), { recursive: true });
+
+        const batch = disableAllExtensions({ dirs });
+        assert.deepEqual(batch.disabled, ['demo-ext']);
+        assert.equal(batch.skipped.length, 1);
+        assert.equal(batch.skipped[0].name, 'second-ext');
+        assert.match(batch.skipped[0].reason, /停用区已有同名副本/);
+
+        const back = enableAllExtensions({ dirs });
+        assert.deepEqual(back.enabled, ['demo-ext']);
+        assert.equal(back.skipped.length, 1);
+        assert.equal(back.skipped[0].name, 'second-ext');
+        assert.match(back.skipped[0].reason, /同名/);
     });
 });

@@ -255,6 +255,32 @@ export async function listBackupRefs({ dir }) {
 }
 
 /**
+ * Delete one backup ref (loose first, packed-refs fallback) so repeated
+ * updates don't grow .git forever.
+ * @param {{ dir: string, backupRef: string }} options
+ */
+export async function deleteBackupRef({ dir, backupRef }) {
+    if (!String(backupRef).startsWith('refs/git-improve/backup/')) {
+        throw new Error('invalid backup ref');
+    }
+    const loosePath = path.join(dir, '.git', ...String(backupRef).split('/'));
+    if (fs.existsSync(loosePath)) {
+        fs.rmSync(loosePath, { force: true });
+        return;
+    }
+    const packed = path.join(dir, '.git', 'packed-refs');
+    if (fs.existsSync(packed)) {
+        const lines = fs.readFileSync(packed, 'utf8').split('\n');
+        const kept = lines.filter(line => !line.endsWith(` ${backupRef}`));
+        if (kept.length !== lines.length) {
+            fs.writeFileSync(packed, kept.join('\n'), 'utf8');
+            return;
+        }
+    }
+    throw new Error(`backup ref not found: ${backupRef}`);
+}
+
+/**
  * Force-checkout a backup ref's tree into the worktree (rollback).
  * @param {{ dir: string, backupRef: string }} options
  */

@@ -126,6 +126,35 @@ describe('git engine (local repo operations)', () => {
         }
     });
 
+    it('deleteBackupRef removes a loose backup ref and rejects foreign refs', async () => {
+        const dir = await makeRepo();
+        try {
+            fs.writeFileSync(path.join(dir, 'a.txt'), 'base');
+            await git.add({ fs, dir, filepath: 'a.txt' });
+            await git.commit({ fs, dir, message: 'base', author: AUTHOR });
+            fs.writeFileSync(path.join(dir, 'a.txt'), 'base with local edits that took real effort');
+            const backupRef = await engine.backupDirtyWorktree({ dir });
+            assert.ok(backupRef);
+            assert.equal((await engine.listBackupRefs({ dir })).length, 1);
+
+            await assert.rejects(
+                () => engine.deleteBackupRef({ dir, backupRef: 'refs/heads/main' }),
+                /invalid backup ref/,
+            );
+            await assert.rejects(
+                () => engine.deleteBackupRef({ dir, backupRef: 'refs/git-improve/backup/does-not-exist' }),
+                /not found/,
+            );
+
+            await engine.deleteBackupRef({ dir, backupRef });
+            assert.equal((await engine.listBackupRefs({ dir })).length, 0);
+            // branch pointer itself is untouched by backup deletion
+            assert.ok(await git.resolveRef({ fs, dir, ref: 'main' }));
+        } finally {
+            rmRfSafe(dir);
+        }
+    });
+
     it('dirtyTrackedFiles and listFiles behave', async () => {
         const dir = await makeRepo();
         try {

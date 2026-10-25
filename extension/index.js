@@ -290,6 +290,7 @@ async function tabDiagnose(root) {
             <div class="stgi-note">扫描已装扩展与服务端插件。更新时本地改动会自动备份；依赖修复可对插件目录或酒馆本体重跑 npm install。</div>
             <div class="stgi-row">
                 <button class="stgi-btn" data-role="reload">扫描（含远端检查）</button>
+                <button class="stgi-btn" data-role="updateAll">全部更新</button>
                 <label><input type="checkbox" data-role="tavern" /> 显示本体依赖修复</label>
             </div>
             <table class="stgi-table"><thead>
@@ -381,6 +382,26 @@ async function tabDiagnose(root) {
     }
 
     q('reload').addEventListener('click', reload);
+
+    q('updateAll').addEventListener('click', async event => {
+        const button = event.target;
+        button.disabled = true;
+        toast('批量更新中，请稍候…');
+        try {
+            const { updated, upToDate, failed } = await api('/update-all', { body: {} });
+            const parts = [];
+            if (updated.length > 0) parts.push(`更新 ${updated.length} 个`);
+            if (upToDate.length > 0) parts.push(`${upToDate.length} 个已是最新`);
+            if (failed.length > 0) parts.push(`失败 ${failed.length} 个（${failed.map(item => `${item.name}: ${item.error}`).join('；').slice(0, 300)}）`);
+            toast(parts.join('，') || '没有可更新的 git 扩展/插件', failed.length > 0 ? 'error' : 'success');
+            reload();
+        } catch (error) {
+            toast(String(error.message || error), 'error');
+        } finally {
+            button.disabled = false;
+        }
+    });
+
     q('tavern').addEventListener('change', () => {
         q('tavernDeps').style.display = q('tavern').checked ? '' : 'none';
     });
@@ -477,6 +498,8 @@ function tabGovernance(root) {
             <div class="stgi-note">扩展治理：停用用户自行安装的扩展（宿主不再加载）。停用=整目录搬入停用区，扩展数据随目录各自保存、不丢失；启用原样搬回。彻底清理会删除停用副本释放磁盘空间，不可恢复。</div>
             <div class="stgi-row">
                 <button class="stgi-btn" data-role="reload">刷新</button>
+                <button class="stgi-btn" data-role="disableAll">一键停用全部自装扩展</button>
+                <button class="stgi-btn" data-role="enableAll">全部启用</button>
                 <span class="stgi-note" data-role="totals"></span>
             </div>
             <table class="stgi-table"><thead>
@@ -575,6 +598,37 @@ function tabGovernance(root) {
     }
 
     q('reload').addEventListener('click', reload);
+
+    q('disableAll').addEventListener('click', async event => {
+        event.target.disabled = true;
+        try {
+            const { disabled, skipped } = await api('/governance/disable-all', { body: {} });
+            const parts = [`已停用 ${disabled.length} 个`];
+            if (skipped.length > 0) parts.push(`跳过 ${skipped.length} 个（${skipped.map(item => `${item.name}: ${item.reason}`).join('；')}）`);
+            toast(parts.join('，') || '没有可停用的自装扩展', 'success');
+            reload();
+        } catch (error) {
+            toast(String(error.message || error), 'error');
+        } finally {
+            event.target.disabled = false;
+        }
+    });
+
+    q('enableAll').addEventListener('click', async event => {
+        event.target.disabled = true;
+        try {
+            const { enabled, skipped } = await api('/governance/enable-all', { body: {} });
+            const parts = [`已启用 ${enabled.length} 个`];
+            if (skipped.length > 0) parts.push(`跳过 ${skipped.length} 个（${skipped.map(item => `${item.name}: ${item.reason}`).join('；')}）`);
+            toast(parts.join('，') || '停用区为空', 'success');
+            reload();
+        } catch (error) {
+            toast(String(error.message || error), 'error');
+        } finally {
+            event.target.disabled = false;
+        }
+    });
+
     reload();
     return section;
 }
@@ -599,9 +653,12 @@ function tabBackups(entry) {
                 const row = el(`<tr>
                     <td>${esc(backup.ref.replace('refs/git-improve/backup/', ''))}</td>
                     <td>${esc(backup.oid.slice(0, 7))}</td>
-                    <td><button class="stgi-btn">恢复</button></td>
+                    <td>
+                        <button class="stgi-btn" data-act="recover">恢复</button>
+                        <button class="stgi-btn" data-act="delBackup">删除备份</button>
+                    </td>
                 </tr>`);
-                row.querySelector('button').addEventListener('click', async event => {
+                row.querySelector('[data-act="recover"]').addEventListener('click', async event => {
                     event.target.disabled = true;
                     try {
                         await api('/recover', { body: { target: entry.target, name: entry.name, backupRef: backup.ref } });
@@ -609,6 +666,20 @@ function tabBackups(entry) {
                     } catch (error) {
                         toast(String(error.message || error), 'error');
                     } finally {
+                        event.target.disabled = false;
+                    }
+                });
+                row.querySelector('[data-act="delBackup"]').addEventListener('click', async event => {
+                    if (!window.confirm(`确定删除备份 ${backup.ref.replace('refs/git-improve/backup/', '')}？此操作不可恢复。`)) {
+                        return;
+                    }
+                    event.target.disabled = true;
+                    try {
+                        await api('/backups', { method: 'DELETE', body: { target: entry.target, name: entry.name, backupRef: backup.ref } });
+                        toast('备份已删除', 'success');
+                        row.remove();
+                    } catch (error) {
+                        toast(String(error.message || error), 'error');
                         event.target.disabled = false;
                     }
                 });

@@ -237,3 +237,61 @@ export function purgeParked({ name, confirm, dirs }) {
     recordAction(ledgerFileFor(dirs), { action: 'purge', name: clean, bytes: freedBytes });
     return { name: clean, freedBytes };
 }
+
+/**
+ * Disable every user-installed extension in one go. The manager panel is
+ * always skipped; conflicts (parked copy already exists) are collected, not
+ * fatal. Each successful move is ledger-recorded by disableExtension.
+ * @param {{ dirs: object }} options
+ */
+export function disableAllExtensions({ dirs }) {
+    const base = dirs.localExtensionsDir;
+    /** @type {string[]} */
+    const disabled = [];
+    /** @type {Array<{ name: string, reason: string }>} */
+    const skipped = [];
+    if (!fs.existsSync(base)) {
+        return { disabled, skipped };
+    }
+    for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) {
+            continue;
+        }
+        if (entry.name === SELF_PANEL_NAME) {
+            skipped.push({ name: entry.name, reason: '本插件管理面板不允许停用' });
+            continue;
+        }
+        try {
+            disabled.push(disableExtension({ name: entry.name, dirs }).name);
+        } catch (error) {
+            skipped.push({ name: entry.name, reason: String(error?.message || error) });
+        }
+    }
+    return { disabled, skipped };
+}
+
+/**
+ * Enable every parked copy in one go; local name conflicts are skipped.
+ * @param {{ dirs: object }} options
+ */
+export function enableAllExtensions({ dirs }) {
+    const parked = parkedDirFor(dirs);
+    /** @type {string[]} */
+    const enabled = [];
+    /** @type {Array<{ name: string, reason: string }>} */
+    const skipped = [];
+    if (!fs.existsSync(parked)) {
+        return { enabled, skipped };
+    }
+    for (const entry of fs.readdirSync(parked, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) {
+            continue;
+        }
+        try {
+            enabled.push(enableExtension({ name: entry.name, dirs }).name);
+        } catch (error) {
+            skipped.push({ name: entry.name, reason: String(error?.message || error) });
+        }
+    }
+    return { enabled, skipped };
+}
