@@ -1,0 +1,25 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Front-end panel parse gate (part of npm test, asserted explicitly for visibility)
+        run: node --input-type=module -e "await import('./extension/index.js'); console.log('panel parse OK')"
+      - run: npm run test:integration
+        continue-on-error: true # 需要网络与 git 环境，失败不阻塞合并；本地跑为准

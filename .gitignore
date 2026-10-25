@@ -14,7 +14,8 @@ out/
 
 # AI 工作流脚手架（本地开发使用，不入库）
 .trellis/
-.github/
+.github/*
+!.github/workflows/
 AGENTS.md
 .agent/
 .agents/
