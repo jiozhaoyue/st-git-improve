@@ -4,6 +4,7 @@ import path from 'node:path';
 import * as engine from '../git/engine.js';
 import { httpError, redactUrl, validateTreePaths } from '../util.js';
 import { npmInstall, depsMissing } from './deps.js';
+import { invalidateGovernanceCache } from './governance.js';
 
 /**
  * Rebuild-style update (ported from TauriTavern semantics):
@@ -74,6 +75,7 @@ export async function updateRepo({ dir, registry, runDeps, log, resolveAuth }) {
     }
 
     await engine.advanceAndCheckout({ dir, branch, oid: candidateOid });
+    invalidateGovernanceCache();
 
     let deps = null;
     if (runDeps && fs.existsSync(path.join(dir, 'package.json'))) {

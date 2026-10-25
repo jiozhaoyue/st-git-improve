@@ -5,6 +5,7 @@ import * as engine from '../git/engine.js';
 import { normalizeRepoUrl, dirNameFromUrl, httpError, redactUrl } from '../util.js';
 import { npmInstall } from './deps.js';
 import { evaluateDedup, readManifest } from './dedup.js';
+import { invalidateGovernanceCache } from './governance.js';
 
 /**
  * @typedef {'extension' | 'global' | 'plugin'} InstallTarget
@@ -137,6 +138,7 @@ export async function installFromUrl({ url, branch, target, dirs, authResolver, 
         }
         fs.mkdirSync(basePath, { recursive: true });
         fs.renameSync(tempPath, targetPath);
+        invalidateGovernanceCache();
 
         let deps = null;
         if (target === 'plugin') {

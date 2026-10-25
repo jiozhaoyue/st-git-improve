@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import * as engine from '../git/engine.js';
 import { httpError, readJsonOr } from '../util.js';
+import { invalidateGovernanceCache } from './governance.js';
 
 /**
  * Dedup decision for a local-scope install against an installed global
@@ -161,6 +162,7 @@ export async function removeLocalDuplicate({ name, force, dirs }) {
 
     const removedBytes = dirSize(localPath);
     fs.rmSync(localPath, { recursive: true, force: true });
+    invalidateGovernanceCache();
     return { name: clean, removedBytes };
 }
 
@@ -184,5 +186,6 @@ export async function runAutoDedup({ dirs }) {
         fs.rmSync(path.join(dirs.localExtensionsDir, dup.name), { recursive: true, force: true });
         removed.push(dup.name);
     }
+    invalidateGovernanceCache();
     return { removed, skipped };
 }
