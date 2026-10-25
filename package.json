@@ -5,7 +5,7 @@
     "description": "SillyTavern/Luker server plugin: authenticated private-source install, rebuild-style update with backup, npm dependency repair, diagnostics.",
     "main": "plugin/index.js",
     "scripts": {
-        "test": "node --test \"test/*.test.js\"",
+        "test": "node --test test/",
         "test:integration": "node test/integration.mjs"
     },
     "dependencies": {
