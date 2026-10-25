@@ -1,6 +1,6 @@
-// Live E2E against the Dev SillyTavern instance (port 8001) with this plugin
-// installed and enableServerPlugins on. SAFETY: refuses any base URL whose
-// port is not 8001 — the Real instance lives on 8002 and must never be hit.
+// Live E2E against a Dev instance (ST on 8001, Luker on 8003) with this
+// plugin installed and enableServerPlugins on. SAFETY: refuses any base URL
+// whose port is not a Dev port — Real instances live on 8002/8004.
 // Run: node test/e2e-live-dev.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,12 +9,17 @@ import path from 'node:path';
 
 const BASE = process.env.ST_GIT_IMPROVE_E2E_BASE || 'http://127.0.0.1:8001';
 const port = new URL(BASE).port;
-if (port !== '8001') {
-    console.error(`REFUSED: live E2E only targets the Dev instance on port 8001 (got ${port}).`);
+const DEV_PORTS = ['8001', '8003'];
+if (!DEV_PORTS.includes(port)) {
+    console.error(`REFUSED: live E2E only targets Dev instances on ports ${DEV_PORTS.join('/')} (got ${port}).`);
     process.exit(2);
 }
 const API = `${BASE}/api/plugins/st-git-improve`;
-const DEV_ROOT = 'D:\\Repo\\Tavern-repo\\Instance\\Dev\\SillyTavern';
+const DEV_ROOTS = {
+    '8001': 'D:\\Repo\\Tavern-repo\\Instance\\Dev\\SillyTavern',
+    '8003': 'D:\\Repo\\Tavern-repo\\Instance\\Dev\\Luker',
+};
+const DEV_ROOT = DEV_ROOTS[port];
 const LOCAL_EXT = path.join(DEV_ROOT, 'data', 'default-user', 'extensions');
 const PARKED_EXT = path.join(DEV_ROOT, 'data', 'default-user', 'extensions-disabled');
 
