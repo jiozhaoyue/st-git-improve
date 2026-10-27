@@ -3,7 +3,7 @@
 // 纯逻辑、无 DOM 依赖 —— 存储适配器由外部注入，可直接单测。
 
 // 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
-const V = '0.8.1';
+const V = '0.8.2';
 
 const { getAdapter, parseRepoUrl, siteKeyOf, extractUserinfo, defaultBaseUrl, normalizeBaseUrl } =
     await import(`./sites.js?v=${V}`);

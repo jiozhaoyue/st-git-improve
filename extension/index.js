@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.1';
+const V = '0.8.2';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -775,7 +775,11 @@ function tabGovernance(root) {
                     badges.push('<span class="stgi-badge warn">已停用</span>');
                     if (entry.parkedAt) badges.push(`<span class="stgi-note">${esc(entry.parkedAt.slice(0, 19).replace('T', ' '))}</span>`);
                 } else if (entry.scope === 'local') {
-                    badges.push('<span class="stgi-badge good">启用中</span>');
+                    if (entry.settingsDisabled) {
+                        badges.push('<span class="stgi-badge warn">宿主设置停用</span>');
+                    } else {
+                        badges.push('<span class="stgi-badge good">启用中</span>');
+                    }
                 }
                 if (entry.isRepo === false) badges.push('<span class="stgi-badge warn">非git</span>');
                 else if (entry.dirtyCount > 0) badges.push(`<span class="stgi-badge warn">本地改动×${entry.dirtyCount}</span>`);

@@ -4,7 +4,7 @@
 // 额外能力：克隆结果可导出为 zip（buildZipBytes），供本地备份/手动上传。
 
 // 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
-const V = '0.8.1';
+const V = '0.8.2';
 
 const { parseRepoUrl } = await import(`./sites.js?v=${V}`);
 const { cloneToMemory } = await import(`./gitbrowser.js?v=${V}`);

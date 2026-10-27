@@ -197,6 +197,31 @@ export function invalidateGovernanceCache() {
     scanCache.clear();
 }
 
+/**
+ * 只读读取宿主设置中的禁用扩展清单（extension_settings.disabledExtensions，
+ * 条目形如 'third-party/<名称>'，兼容旧根级形态）。读取失败返回空集——
+ * 仅用于展示合并，绝不写宿主设置（避免与宿主内存态竞态）。
+ * @param {{ localExtensionsDir: string }} dirs
+ * @returns {Set<string>}
+ */
+function readSettingsDisabledNames(dirs) {
+    const settingsFile = path.join(path.dirname(dirs.localExtensionsDir), 'settings.json');
+    const settings = readJsonOr(settingsFile, {});
+    const names = new Set();
+    const container = settings?.extension_settings?.disabledExtensions ?? settings?.disabledExtensions;
+    const add = (value) => {
+        if (typeof value === 'string') names.add(value);
+    };
+    if (Array.isArray(container)) {
+        container.forEach(add);
+    } else if (container && typeof container === 'object') {
+        for (const bucket of Object.values(container)) {
+            if (Array.isArray(bucket)) bucket.forEach(add);
+        }
+    }
+    return names;
+}
+
 export async function listGovernance({ dirs }) {
     const key = [dirs.localExtensionsDir, dirs.globalExtensionsDir, dirs.pluginsDir].join('|');
     const hit = scanCache.get(key);
@@ -211,8 +236,13 @@ export async function listGovernance({ dirs }) {
         scanScope('parked', parkedDir, { registryFile }),
         scanScope('plugin', dirs.pluginsDir, { registryFile, skipNames: [path.basename(dirs.selfPluginDir)] }),
     ]);
+    const settingsDisabled = readSettingsDisabledNames(dirs);
+    for (const entry of [...local, ...global]) {
+        entry.settingsDisabled = settingsDisabled.has(`third-party/${entry.name}`);
+    }
     const overview = {
         parkedDir,
+        settingsDisabledNames: [...settingsDisabled],
         entries: [...local, ...global, ...parked, ...plugins],
         totals: {
             localBytes: local.reduce((sum, entry) => sum + entry.bytes, 0),

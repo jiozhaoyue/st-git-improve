@@ -9,6 +9,7 @@ import {
     disableExtension,
     enableAllExtensions,
     enableExtension,
+    invalidateGovernanceCache,
     listGovernance,
     purgeParked,
     SELF_PANEL_NAME,
@@ -75,6 +76,25 @@ describe('governance', () => {
         assert.ok(overview.totals.localBytes > 0);
         assert.equal(overview.totals.parkedBytes, 0);
         assert.ok(overview.parkedDir.endsWith('extensions-disabled'));
+    });
+
+    it('listGovernance flags settingsDisabled from host settings (read-only)', async () => {
+        const { dirs } = fixture;
+        // 宿主设置：demo-ext 被禁用（extension_settings 内的数组形态）
+        const settingsFile = path.join(path.dirname(dirs.localExtensionsDir), 'settings.json');
+        fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+        fs.writeFileSync(settingsFile, JSON.stringify({
+            extension_settings: { disabledExtensions: ['third-party/demo-ext'] },
+        }));
+        const overview = await listGovernance({ dirs });
+        const demo = overview.entries.find(entry => entry.name === 'demo-ext');
+        assert.equal(demo.settingsDisabled, true);
+        assert.deepEqual(overview.settingsDisabledNames, ['third-party/demo-ext']);
+        // 兼容旧根级数组形态
+        fs.writeFileSync(settingsFile, JSON.stringify({ disabledExtensions: ['third-party/demo-ext'] }));
+        invalidateGovernanceCache();
+        const again = await listGovernance({ dirs });
+        assert.equal(again.entries.find(entry => entry.name === 'demo-ext').settingsDisabled, true);
     });
 
     it('disable moves the whole dir (data included) into parking + ledger entry', async () => {
