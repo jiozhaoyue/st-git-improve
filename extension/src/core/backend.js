@@ -172,6 +172,17 @@ export async function hostToggleExtensionDisabled(name, disable) {
     return { ok: true, disabled: disable };
 }
 
+/** 宿主原生扩展删除（更新流程用：删旧目录后重装）。
+ * 实测契约（ST 1.19）：POST /api/extensions/delete，body { extensionName: '<不带前缀>' }，
+ * 成功 200 "Extension has been deleted at ..."；目录不存在 404。 */
+export async function hostDeleteExtension(name) {
+    const result = await hostApi('/api/extensions/delete', {
+        body: { extensionName: String(name || '').replace(/^third-party\//, '') },
+    });
+    if (result.ok || result.status === 404) return { ok: true, status: result.status };
+    return { ok: false, note: result.data?.raw || result.data?.error || `HTTP ${result.status}` };
+}
+
 // ---------------------------------------------------------------- 统一操作门面
 
 /** 宿主原生扩展迁移（local ↔ global）。

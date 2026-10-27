@@ -4,7 +4,7 @@
 // 额外能力：克隆结果可导出为 zip（buildZipBytes），供本地备份/手动上传。
 
 // 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
-const V = '0.7.7';
+const V = '0.8.0';
 
 const { parseRepoUrl } = await import(`./sites.js?v=${V}`);
 const { cloneToMemory } = await import(`./gitbrowser.js?v=${V}`);
@@ -84,7 +84,7 @@ export async function preflightAccessible(repoUrl, auth) {
  *          accounts: import('./accounts.js').AccountStore, onLog?: (line: string) => void }} options
  * @returns {Promise<{ name: string, oid: string, mode: 'host-native', note?: string, cloned?: object }>}
  */
-export async function pureInstall({ url, branch, target = 'extension', accounts, onLog }) {
+export async function pureInstall({ url, branch, target = 'extension', replace = false, accounts, onLog }) {
     const log = onLog || (() => { });
     const repo = parseRepoUrl(url);
     const credential = await accounts.credentialsFor(url);
@@ -128,13 +128,28 @@ export async function pureInstall({ url, branch, target = 'extension', accounts,
 
     // 主路径：宿主原生安装（服务端克隆，无 CORS 约束）
     const authedUrl = buildAuthedUrl(url, auth);
-    const { hostNativeInstall } = await import(`./backend.js?v=${V}`);
+    const { hostNativeInstall, hostDeleteExtension } = await import(`./backend.js?v=${V}`);
     log('交给宿主原生安装通道…');
-    const result = await hostNativeInstall({
+    let result = await hostNativeInstall({
         authedUrl,
         global: target === 'global',
         branch: branch || undefined,
     });
+    // 更新语义：目录已存在且调用方允许 replace 时，删除旧目录后重装一次。
+    // 实测：宿主安装端点不支持覆盖（409 Directory already exists），
+    // /api/extensions/delete 可删除本地扩展目录（扩展目录内的本地改动不会备份）。
+    if (!result.ok && replace && /already exists/i.test(String(result.data?.raw || result.data?.error || ''))) {
+        log('目录已存在 —— 按「更新」流程：删除旧目录（本地改动不备份）后重装…');
+        const deleted = await hostDeleteExtension(repo.repo);
+        if (!deleted.ok) {
+            throw new Error(`删除旧版失败: ${deleted.note}`);
+        }
+        result = await hostNativeInstall({
+            authedUrl,
+            global: target === 'global',
+            branch: branch || undefined,
+        });
+    }
     if (!result.ok) {
         const detail = result.data?.error || result.data?.raw || `HTTP ${result.status}`;
         throw new Error(`宿主安装失败: ${detail}`);

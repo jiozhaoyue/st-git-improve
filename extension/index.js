@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.7.9';
+const V = '0.8.0';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -322,7 +322,10 @@ async function tabInstall(root) {
                         ${pure ? '' : '<option value="plugin">服务端插件</option>'}
                     </select>
                 </div>
-                ${pure ? '' : `
+                ${pure ? `
+                <div class="stgi-row">
+                    <label><input type="checkbox" data-role="replace" /> 目录已存在时删除旧版重装（更新语义；扩展目录内的本地改动不会被备份）</label>
+                </div>` : `
                 <div class="stgi-row">
                     <label><input type="checkbox" data-role="replace" /> 目录已存在时替换重装</label>
                 </div>
@@ -368,6 +371,7 @@ async function tabInstall(root) {
                     url,
                     branch: q('branch').value.trim() || undefined,
                     target: q('target').value,
+                    replace: q('replace')?.checked === true,
                     accounts: RT.store,
                     onLog: append,
                 });
@@ -651,6 +655,7 @@ async function tabDiagnosePure(root) {
                     url: origin.url,
                     branch: origin.branch || undefined,
                     target: origin.target || 'extension',
+                    replace: true,
                     accounts: RT.store,
                     onLog: append,
                 });
@@ -666,7 +671,11 @@ async function tabDiagnosePure(root) {
         button.disabled = false;
     });
 
-    async function runUpdate(origin, displayName) {
+    async function runUpdate(origin, displayName, { confirmFirst = false } = {}) {
+        if (confirmFirst && !window.confirm(
+            `更新 ${displayName || origin.url}：将删除本地旧版目录后重装最新版。\n注意：扩展目录内的本地改动不会被备份（服务端插件的 git 备份更新更安全）。继续？`)) {
+            return null;
+        }
         const logBox = el('<div class="stgi-log" style="display:block"></div>');
         const overlay = openDialog(`更新 — ${esc(displayName || origin.url)}`, logBox);
         const append = line => { logBox.textContent += `${line}\n`; logBox.scrollTop = logBox.scrollHeight; };
@@ -675,6 +684,7 @@ async function tabDiagnosePure(root) {
                 url: origin.url,
                 branch: origin.branch || undefined,
                 target: origin.target || 'extension',
+                replace: true,
                 accounts: RT.store,
                 onLog: append,
             });
