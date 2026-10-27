@@ -1,15 +1,22 @@
 // ST Git Improve — supplementary front-end panel.
-// Adds an "Git 源管理" entry to the Extensions menu. Does not modify any
+// Adds a "Git 源管理" entry to the Extensions menu. Does not modify any
 // native extension-management behavior.
+//
+// 运行模式（L0-11 适配器 + 特性检测 + 静默降级）：
+//   - 服务端插件在位（/health 探测成功）→ 插件通道：完整语义（备份/去重/依赖修复）
+//   - 纯前端（插件不在位）→ 浏览器内克隆（isomorphic-git）+ 宿主原生安装通道；
+//     账号凭据保存在浏览器侧（宿主设置 / localStorage），逐个登录、可多个。
 
-const API = '/api/plugins/st-git-improve';
-
-const SITE_TYPES = [
-    { id: 'gitea', label: 'Gitea / Forgejo（含自建）', needsBase: true },
-    { id: 'github', label: 'GitHub', needsBase: false },
-    { id: 'gitlab', label: 'GitLab（留空 = gitlab.com，自建请填地址）', needsBase: true },
-    { id: 'gitee', label: 'Gitee', needsBase: false },
-];
+import {
+    detectMode,
+    pluginApi,
+    hostDiscover,
+    hostSettingsGet,
+    hostToggleExtensionDisabled,
+} from './src/core/backend.js';
+import { getSharedStore } from './src/core/accounts.js';
+import { SITE_TYPES, siteKeyOf } from './src/core/sites.js';
+import { pureInstall, buildZipBytes } from './src/core/installflow.js';
 
 function toast(msg, kind = 'info') {
     const toastr = window.toastr;
@@ -20,39 +27,8 @@ function toast(msg, kind = 'info') {
     }
 }
 
-let csrfTokenCache = null;
-async function getCsrfToken() {
-    if (!csrfTokenCache) {
-        const response = await fetch('/csrf-token');
-        const data = await response.json();
-        csrfTokenCache = String(data?.token || '');
-    }
-    return csrfTokenCache;
-}
-
 async function api(path, options = {}) {
-    const init = { headers: {}, ...options };
-    if (init.body !== undefined) {
-        init.method = init.method || 'POST';
-        init.headers['Content-Type'] = 'application/json';
-        init.body = JSON.stringify(init.body);
-    }
-    if (init.method && init.method !== 'GET') {
-        // Host CSRF protection rejects mutating requests without this header.
-        init.headers['X-CSRF-Token'] = await getCsrfToken();
-    }
-    const response = await fetch(`${API}${path}`, init);
-    const text = await response.text();
-    let data = null;
-    try {
-        data = text ? JSON.parse(text) : null;
-    } catch {
-        data = null;
-    }
-    if (!response.ok) {
-        throw new Error(data?.error || text || `${response.status} ${response.statusText}`);
-    }
-    return data;
+    return pluginApi(path, options);
 }
 
 function el(html) {
@@ -65,12 +41,43 @@ const esc = value => String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+/** 面板运行时上下文：模式 + 账号库（openMain 里初始化）。 */
+const RT = {
+    mode: 'pure',
+    store: null,
+};
+
+function humanBytes(n) {
+    if (!Number.isFinite(n)) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = n;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+    }
+    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+let whoamiCache = null;
+async function getWhoami() {
+    if (!whoamiCache) {
+        try {
+            whoamiCache = await api('/whoami');
+        } catch {
+            whoamiCache = { mode: 'unknown', canForce: true };
+        }
+    }
+    return whoamiCache;
+}
+
 // ---------------------------------------------------------------- tabs
 
-function tabSites(root) {
+/** 账号管理：逐个登录、多账号、默认账号、验证、导出/导入、（服务端模式）推送。 */
+function tabAccounts(root) {
     const section = el(`
         <div>
-            <div class="stgi-note">为需要登录的 git 站点保存凭据。凭据只存本机（酒馆数据目录），不会写入任何仓库地址。</div>
+            <div class="stgi-note">为需要登录的 git 站点保存账号——<b>逐个添加</b>，每个站点可存多个账号，☆ 切换该站点默认账号。凭据只保存在浏览器侧（宿主设置/localStorage），不会写进任何仓库地址。</div>
             <div class="stgi-section">
                 <div class="stgi-row">
                     <select data-role="type" style="flex:0 0 200px">
@@ -79,26 +86,31 @@ function tabSites(root) {
                     <input data-role="baseUrl" placeholder="站点地址，如 https://git.example.com" style="display:none" />
                     <input data-role="username" placeholder="用户名（可选）" />
                 </div>
-                <div class="stgi-row" data-role="patRow">
+                <div class="stgi-row">
                     <input data-role="token" placeholder="访问令牌 (PAT)" type="password" />
-                    <button class="stgi-btn primary" data-role="savePat">保存 PAT</button>
+                    <input data-role="note" placeholder="备注（可选，如 主号/小号）" style="flex:0 1 140px" />
                 </div>
-                <div class="stgi-row" data-role="passwordRow">
-                    <input data-role="password" placeholder="账号密码（自动换取 token，仅 Gitea/Forgejo）" type="password" />
-                    <button class="stgi-btn" data-role="savePassword">登录并保存</button>
+                <div class="stgi-row">
+                    <label><input type="checkbox" data-role="makeDefault" checked /> 设为该站点默认账号</label>
+                    <button class="stgi-btn primary" data-role="add" style="margin-left:auto">添加账号</button>
                 </div>
-                <div class="stgi-row" data-role="deviceRow">
-                    <button class="stgi-btn" data-role="deviceStart">设备码登录（GitHub / GitLab）</button>
-                    <span data-role="deviceHint" class="stgi-note"></span>
-                </div>
-                <div class="stgi-row" data-role="userinfoRow">
-                    <input data-role="userinfoUrl" placeholder="或直接粘贴 https://user:token@host/... 形式的地址，自动提取" />
-                    <button class="stgi-btn" data-role="saveUserinfo">提取保存</button>
-                </div>
+                <details>
+                    <summary class="stgi-note" style="cursor:pointer">其他登录方式</summary>
+                    <div class="stgi-row" style="margin-top:6px">
+                        <input data-role="userinfoUrl" placeholder="粘贴 https://user:token@host/... 形式的地址，自动提取" />
+                        <button class="stgi-btn" data-role="saveUserinfo">提取保存</button>
+                    </div>
+                </details>
+            </div>
+            <div class="stgi-row">
+                <button class="stgi-btn" data-role="export">导出账号</button>
+                <input type="file" data-role="importFile" accept="application/json" style="display:none" />
+                <button class="stgi-btn" data-role="import">导入账号</button>
+                ${RT.mode === 'server' ? '<span class="stgi-note">「推送服务端」把账号同步给服务端插件（其克隆/治理用它认证）</span>' : ''}
             </div>
             <table class="stgi-table"><thead>
-                <tr><th>站点</th><th>类型</th><th>方式</th><th>状态</th><th>操作</th></tr>
-            </thead><tbody data-role="siteRows"></tbody></table>
+                <tr><th>账号</th><th>站点</th><th>方式</th><th>状态</th><th>默认</th><th>操作</th></tr>
+            </thead><tbody data-role="rows"></tbody></table>
         </div>`);
 
     const q = role => section.querySelector(`[data-role="${role}"]`);
@@ -107,71 +119,125 @@ function tabSites(root) {
     function refreshBaseVisibility() {
         const type = SITE_TYPES.find(t => t.id === typeSelect.value);
         q('baseUrl').style.display = type?.needsBase ? '' : 'none';
+        if (type && !type.needsBase) q('baseUrl').value = '';
     }
     typeSelect.addEventListener('change', refreshBaseVisibility);
     refreshBaseVisibility();
 
+    function statusBadge(account) {
+        if (!account.lastCheckedAt) return '<span class="stgi-badge warn">未验证</span>';
+        return account.lastCheckOk
+            ? `<span class="stgi-badge good">已验证${account.lastLogin ? ` (${esc(account.lastLogin)})` : ''}</span>`
+            : '<span class="stgi-badge bad">验证失败</span>';
+    }
+
     async function reload() {
-        const { sites } = await api('/sites');
-        const rows = q('siteRows');
+        const snapshot = RT.store.snapshot();
+        const rows = q('rows');
         rows.innerHTML = '';
-        for (const site of sites) {
+        if (snapshot.accounts.length === 0) {
+            rows.innerHTML = '<tr><td colspan="6">还没有账号 —— 在上方添加第一个</td></tr>';
+            return;
+        }
+        for (const account of snapshot.accounts) {
+            const siteKey = siteKeyOf(account.type, account.baseUrl);
+            const isDefault = snapshot.defaults[siteKey] === account.id;
+            const siteLabel = `${account.type}${SITE_TYPES.find(t => t.id === account.type)?.needsBase ? ` · ${account.baseUrl}` : ''}`;
             const row = el(`<tr>
-                <td>${esc(site.host)}<div class="stgi-note">${esc(site.note || '')}</div></td>
-                <td>${esc(site.type)}</td>
-                <td>${esc(site.method)}</td>
-                <td>${site.hasToken ? '<span class="stgi-badge good">已保存</span>' : '<span class="stgi-badge bad">无 token</span>'}</td>
+                <td>${esc(account.note || account.username || '(匿名)')}<div class="stgi-note">${esc(account.username || '')}</div></td>
+                <td>${esc(siteLabel)}</td>
+                <td>${esc(account.method || 'pat')}</td>
+                <td>${statusBadge(account)}</td>
+                <td>${isDefault ? '<span class="stgi-badge good">★</span>' : '<button class="stgi-btn" data-act="setDefault" title="设为该站点默认">☆</button>'}</td>
                 <td>
                     <button class="stgi-btn" data-act="test">测试</button>
+                    ${RT.mode === 'server' ? '<button class="stgi-btn" data-act="push">推送服务端</button>' : ''}
                     <button class="stgi-btn" data-act="del">删除</button>
                 </td>
             </tr>`);
-            row.querySelector('[data-act="test"]').addEventListener('click', async () => {
-                toast('测试中…');
+            row.querySelector('[data-act="setDefault"]')?.addEventListener('click', async () => {
                 try {
-                    const result = await api(`/sites/${site.id}/test`, { body: {} });
-                    toast(result.ok ? `有效（${result.login || 'ok'}）` : `无效（HTTP ${result.status}）`, result.ok ? 'success' : 'error');
+                    await RT.store.setDefault(siteKey, account.id);
+                    reload();
+                } catch (error) {
+                    toast(String(error.message || error), 'error');
+                }
+            });
+            row.querySelector('[data-act="test"]').addEventListener('click', async () => {
+                toast('验证中…');
+                try {
+                    const result = await RT.store.testAccount(account.id);
+                    if (result.ok) toast(`有效（${result.login || 'ok'}）`, 'success');
+                    else if (result.blockedByBrowser) toast('浏览器直连被拦截（CORS），凭据已保存未验证', 'error');
+                    else toast(`无效（HTTP ${result.status}）`, 'error');
+                    reload();
+                } catch (error) {
+                    if (error?.blockedByBrowser) {
+                        toast('浏览器直连被拦截（CORS 或网络），凭据已保存；实际以 git 操作结果为准', 'error');
+                        reload();
+                    } else {
+                        toast(String(error.message || error), 'error');
+                    }
+                }
+            });
+            row.querySelector('[data-act="push"]')?.addEventListener('click', async () => {
+                try {
+                    await api('/sites', {
+                        body: {
+                            type: account.type,
+                            baseUrl: account.baseUrl,
+                            username: account.username,
+                            method: 'pat',
+                            token: account.token,
+                        },
+                    });
+                    toast('已推送到服务端', 'success');
                 } catch (error) {
                     toast(String(error.message || error), 'error');
                 }
             });
             row.querySelector('[data-act="del"]').addEventListener('click', async () => {
-                await api(`/sites/${site.id}`, { method: 'DELETE' });
-                toast('已删除', 'success');
-                reload();
+                try {
+                    await RT.store.removeAccount(account.id);
+                    toast('已删除', 'success');
+                    reload();
+                } catch (error) {
+                    toast(String(error.message || error), 'error');
+                }
             });
             rows.append(row);
         }
     }
 
-    function currentBase() {
-        const type = SITE_TYPES.find(t => t.id === typeSelect.value);
-        return {
-            type: typeSelect.value,
-            baseUrl: q('baseUrl').value.trim() || (type?.needsBase ? '' : `https://${typeSelect.value === 'github' ? 'github.com' : typeSelect.value === 'gitlab' ? 'gitlab.com' : 'gitee.com'}`),
-            username: q('username').value.trim(),
-        };
-    }
-
-    q('savePat').addEventListener('click', async () => {
-        const base = currentBase();
+    q('add').addEventListener('click', async () => {
         try {
-            await api('/sites', { body: { ...base, method: 'pat', token: q('token').value.trim() } });
-            toast('已保存', 'success');
+            const { account } = await RT.store.addAccount({
+                type: typeSelect.value,
+                baseUrl: q('baseUrl').value.trim() || undefined,
+                username: q('username').value.trim(),
+                token: q('token').value.trim(),
+                note: q('note').value.trim(),
+                makeDefault: q('makeDefault').checked,
+            });
             q('token').value = '';
+            q('username').value = '';
+            q('note').value = '';
+            toast('账号已保存', 'success');
             reload();
-        } catch (error) {
-            toast(String(error.message || error), 'error');
-        }
-    });
-
-    q('savePassword').addEventListener('click', async () => {
-        const base = currentBase();
-        try {
-            await api('/sites', { body: { ...base, method: 'password', password: q('password').value } });
-            toast('登录成功，token 已保存', 'success');
-            q('password').value = '';
-            reload();
+            // 保存后立即后台验证一次
+            try {
+                const result = await RT.store.testAccount(account.id);
+                if (result.ok) toast(`验证通过（${result.login || 'ok'}）`, 'success');
+                else toast(`已保存但验证未通过（HTTP ${result.status}）——可重试「测试」`, 'error');
+                reload();
+            } catch (error) {
+                if (error?.blockedByBrowser) {
+                    toast('浏览器直连被拦截（CORS），凭据已保存；实际以 git 操作结果为准', 'error');
+                    reload();
+                } else {
+                    toast(`验证失败: ${error.message || error}`, 'error');
+                }
+            }
         } catch (error) {
             toast(String(error.message || error), 'error');
         }
@@ -179,52 +245,52 @@ function tabSites(root) {
 
     q('saveUserinfo').addEventListener('click', async () => {
         try {
-            await api('/sites', { body: { method: 'userinfo', url: q('userinfoUrl').value.trim(), note: q('username').value.trim() } });
-            toast('已提取并保存', 'success');
+            await RT.store.addFromUserinfoUrl(q('userinfoUrl').value.trim());
             q('userinfoUrl').value = '';
+            toast('已提取并保存', 'success');
             reload();
         } catch (error) {
             toast(String(error.message || error), 'error');
         }
     });
 
-    let polling = false;
-    q('deviceStart').addEventListener('click', async () => {
-        if (polling) return;
-        const base = currentBase();
+    q('export').addEventListener('click', () => {
+        const blob = new Blob([JSON.stringify(RT.store.snapshot(), null, 2)], { type: 'application/json' });
+        const link = el(`<a href="${URL.createObjectURL(blob)}" download="st-git-improve-accounts.json">导出</a>`);
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+    });
+
+    q('import').addEventListener('click', () => q('importFile').click());
+    q('importFile').addEventListener('change', async event => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
         try {
-            const flow = await api('/device/start', { body: { type: base.type, baseUrl: base.baseUrl, username: base.username } });
-            window.open(flow.verifyUrlComplete || flow.verifyUrl, '_blank');
-            q('deviceHint').textContent = `请在浏览器输入代码: ${flow.userCode}`;
-            polling = true;
-            const pollOnce = async () => {
-                if (!polling) return;
-                try {
-                    const result = await api('/device/poll', { body: { flowId: flow.flowId, type: base.type, baseUrl: base.baseUrl, username: base.username } });
-                    if (result.status === 'granted') {
-                        toast('登录成功，token 已保存', 'success');
-                        polling = false;
-                        q('deviceHint').textContent = '';
-                        reload();
-                        return;
-                    }
-                    if (result.status === 'expired') {
-                        toast('设备码已过期', 'error');
-                        polling = false;
-                        q('deviceHint').textContent = '';
-                        return;
-                    }
-                } catch (error) {
-                    toast(String(error.message || error), 'error');
-                    polling = false;
-                    q('deviceHint').textContent = '';
-                    return;
-                }
-                setTimeout(pollOnce, Math.max(2, flow.interval) * 1000);
-            };
-            setTimeout(pollOnce, Math.max(2, flow.interval) * 1000);
+            const imported = JSON.parse(await file.text());
+            if (!Array.isArray(imported.accounts)) throw new Error('文件里没有 accounts 数组');
+            if (!window.confirm(`导入 ${imported.accounts.length} 个账号？（覆盖当前账号库）`)) return;
+            for (const account of imported.accounts) {
+                await RT.store.addAccount({
+                    type: account.type,
+                    baseUrl: account.baseUrl,
+                    username: account.username,
+                    token: account.token,
+                    note: account.note,
+                    method: account.method || 'pat',
+                    replaceExisting: true,
+                    makeDefault: false,
+                });
+            }
+            // 恢复默认账号映射
+            for (const [siteKey, id] of Object.entries(imported.defaults || {})) {
+                const account = RT.store.snapshot().accounts.find(a => a.id === id);
+                if (account) await RT.store.setDefault(siteKey, id).catch(() => { });
+            }
+            toast('导入完成', 'success');
+            reload();
         } catch (error) {
-            toast(String(error.message || error), 'error');
+            toast(`导入失败: ${error.message || error}`, 'error');
         }
     });
 
@@ -233,9 +299,12 @@ function tabSites(root) {
 }
 
 async function tabInstall(root) {
+    const pure = RT.mode !== 'server';
     const section = el(`
         <div>
-            <div class="stgi-note">安装私有/任意 http(s) git 仓库。目标站点已在「站点凭据」中保存登录时自动认证。前端扩展装到当前用户，服务端插件装到 plugins/。</div>
+            <div class="stgi-note">${pure
+            ? '纯前端模式：浏览器内克隆（支持私有仓库，凭据来自「账号」页），再交给宿主原生安装通道。'
+            : '安装私有/任意 http(s) git 仓库。目标站点已保存登录时自动认证。前端扩展装到当前用户，服务端插件装到 plugins/。'}</div>
             <div class="stgi-section">
                 <div class="stgi-row">
                     <input data-role="url" placeholder="仓库地址 https://..." style="flex:3 1 260px" />
@@ -243,9 +312,10 @@ async function tabInstall(root) {
                     <select data-role="target" style="flex:0 0 150px">
                         <option value="extension">用户扩展</option>
                         <option value="global">全局扩展</option>
-                        <option value="plugin">服务端插件</option>
+                        ${pure ? '' : '<option value="plugin">服务端插件</option>'}
                     </select>
                 </div>
+                ${pure ? '' : `
                 <div class="stgi-row">
                     <label><input type="checkbox" data-role="replace" /> 目录已存在时替换重装</label>
                 </div>
@@ -254,7 +324,7 @@ async function tabInstall(root) {
                     <div class="stgi-row">
                         <label><input type="checkbox" data-role="force" /> 强制本地安装（覆盖重复检测；全局已有同名/同版本扩展时仍要装本地副本）</label>
                     </div>
-                </details>
+                </details>`}
                 <div class="stgi-row">
                     <button class="stgi-btn primary" data-role="go">安装</button>
                 </div>
@@ -268,37 +338,66 @@ async function tabInstall(root) {
         button.disabled = true;
         const log = q('log');
         log.style.display = '';
-        log.textContent = '安装中…';
+        const append = line => { log.textContent += `${line}\n`; log.scrollTop = log.scrollHeight; };
+        log.textContent = '';
+        const url = q('url').value.trim();
         try {
-            const result = await api('/install', {
-                body: {
-                    url: q('url').value.trim(),
+            if (url) await RT.store.credentialsFor(url); // 预解析站点（错误提前暴露）
+            if (RT.mode === 'server') {
+                append('服务端插件通道…');
+                const result = await api('/install', {
+                    body: {
+                        url,
+                        branch: q('branch').value.trim() || undefined,
+                        target: q('target').value,
+                        replace: q('replace')?.checked,
+                        force: q('force')?.checked,
+                    },
+                });
+                log.textContent = `安装完成: ${result.name}\n提交: ${(result.oid || '').slice(0, 7)}`;
+                toast('安装完成，刷新页面后生效', 'success');
+            } else {
+                const result = await pureInstall({
+                    url,
                     branch: q('branch').value.trim() || undefined,
                     target: q('target').value,
-                    replace: q('replace').checked,
-                    force: q('force').checked,
-                },
-            });
-            log.textContent = `安装完成: ${result.name}\n提交: ${(result.oid || '').slice(0, 7)}`;
-            toast('安装完成，刷新页面后生效', 'success');
+                    accounts: RT.store,
+                    onLog: append,
+                });
+                append(`完成: ${result.name}（宿主原生通道）`);
+                // 附加能力：把克隆结果导出为本地 zip（数据备份/手动上传双保险）
+                try {
+                    const bytes = buildZipBytes(result.cloned);
+                    const href = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
+                    const link = el(`<a class="stgi-btn" href="${href}" download="${esc(result.name || 'repository')}.zip">保存 zip 副本</a>`);
+                    log.append(el('<div></div>'), link);
+                    setTimeout(() => URL.revokeObjectURL(href), 60000);
+                } catch { /* 导出失败不影响安装结果 */ }
+                toast('安装完成，刷新页面后生效', 'success');
+            }
         } catch (error) {
-            log.textContent = `失败: ${error.message || error}`;
+            append(`失败: ${error.message || error}`);
             toast(String(error.message || error), 'error');
         } finally {
             button.disabled = false;
         }
     });
 
-    const whoami = await getWhoami();
-    if (whoami.canForce === false) {
-        q('force').closest('.stgi-row').style.display = 'none';
-        q('force').closest('details').insertAdjacentHTML('beforeend',
-            '<div class="stgi-note">当前登录用户非管理员：重复检测始终生效，强制覆盖不可用。</div>');
+    if (RT.mode === 'server') {
+        const whoami = await getWhoami();
+        if (whoami.canForce === false) {
+            q('force').closest('.stgi-row').style.display = 'none';
+            q('force').closest('details').insertAdjacentHTML('beforeend',
+                '<div class="stgi-note">当前登录用户非管理员：重复检测始终生效，强制覆盖不可用。</div>');
+        }
     }
     return section;
 }
 
 async function tabDiagnose(root) {
+    if (RT.mode !== 'server') {
+        return tabDiagnosePure(root);
+    }
     const section = el(`
         <div>
             <div class="stgi-note">扫描已装扩展与服务端插件。更新时本地改动会自动备份；依赖修复可对插件目录或酒馆本体重跑 npm install。</div>
@@ -506,7 +605,52 @@ async function tabDiagnose(root) {
     return section;
 }
 
+/** 纯前端诊断：宿主原生扩展发现（只读状态总览）。 */
+async function tabDiagnosePure(root) {
+    const section = el(`
+        <div>
+            <div class="stgi-note">纯前端模式：列出宿主已安装的第三方扩展（只读）。更新 / 依赖修复 / 备份恢复 / 去重需要服务端插件（可选增强）。</div>
+            <div class="stgi-row">
+                <button class="stgi-btn" data-role="reload">扫描已装扩展</button>
+            </div>
+            <table class="stgi-table"><thead>
+                <tr><th>名称</th><th>显示名</th><th>版本</th></tr>
+            </thead><tbody data-role="rows"></tbody></table>
+        </div>`);
+    const q = role => section.querySelector(`[data-role="${role}"]`);
+    async function reload() {
+        const rows = q('rows');
+        rows.innerHTML = '<tr><td colspan="3">扫描中…</td></tr>';
+        try {
+            const { status, ok, data } = await hostDiscover();
+            if (!ok) throw new Error(`宿主 discover 失败（HTTP ${status}）`);
+            const entries = Array.isArray(data) ? data : (data?.extensions || []);
+            rows.innerHTML = '';
+            if (entries.length === 0) {
+                rows.innerHTML = '<tr><td colspan="3">未发现任何第三方扩展</td></tr>';
+                return;
+            }
+            for (const entry of entries) {
+                const row = el(`<tr>
+                    <td>${esc(entry.name || '')}</td>
+                    <td>${esc(entry.displayName || '')}</td>
+                    <td>${esc(entry.version || '')}</td>
+                </tr>`);
+                rows.append(row);
+            }
+        } catch (error) {
+            rows.innerHTML = `<tr><td colspan="3">扫描失败: ${esc(String(error.message || error))}</td></tr>`;
+        }
+    }
+    q('reload').addEventListener('click', reload);
+    reload();
+    return section;
+}
+
 function tabGovernance(root) {
+    if (RT.mode !== 'server') {
+        return tabGovernancePure(root);
+    }
     const section = el(`
         <div>
             <div class="stgi-note">扩展治理：停用用户自行安装的扩展（宿主不再加载）。停用=整目录搬入停用区，扩展数据随目录各自保存、不丢失；启用原样搬回。彻底清理会删除停用副本释放磁盘空间，不可恢复。</div>
@@ -647,6 +791,94 @@ function tabGovernance(root) {
     return section;
 }
 
+/** 纯前端治理：宿主设置 disabledExtensions 开关（目录不动，宿主不加载）。 */
+async function tabGovernancePure(root) {
+    const section = el(`
+        <div>
+            <div class="stgi-note">纯前端治理：通过宿主设置开关扩展加载（目录与数据完全不动，刷新后生效）。整目录停用/清理以释放磁盘需要服务端插件。</div>
+            <div class="stgi-row">
+                <button class="stgi-btn" data-role="reload">刷新</button>
+                <span class="stgi-note" data-role="note"></span>
+            </div>
+            <table class="stgi-table"><thead>
+                <tr><th>名称</th><th>加载状态</th><th>操作</th></tr>
+            </thead><tbody data-role="rows"></tbody></table>
+        </div>`);
+    const q = role => section.querySelector(`[data-role="${role}"]`);
+
+    async function currentDisabledSet() {
+        const settings = await hostSettingsGet();
+        if (!settings.ok || !settings.data) {
+            throw new Error(`宿主设置不可达（HTTP ${settings.status}）`);
+        }
+        const container = settings.data.disabledExtensions;
+        const names = new Set();
+        if (Array.isArray(container)) {
+            for (const n of container) names.add(n);
+        } else if (container && typeof container === 'object') {
+            for (const bucket of Object.values(container)) {
+                if (Array.isArray(bucket)) for (const n of bucket) names.add(n);
+            }
+        }
+        return names;
+    }
+
+    async function installedNames() {
+        try {
+            const { ok, data } = await hostDiscover();
+            if (!ok) return [];
+            const entries = Array.isArray(data) ? data : (data?.extensions || []);
+            return entries.map(e => e.name).filter(Boolean);
+        } catch {
+            return [];
+        }
+    }
+
+    async function reload() {
+        const rows = q('rows');
+        rows.innerHTML = '<tr><td colspan="3">加载中…</td></tr>';
+        try {
+            const [disabled, names] = await Promise.all([currentDisabledSet(), installedNames()]);
+            const list = names.length > 0 ? names : [...disabled];
+            rows.innerHTML = '';
+            if (list.length === 0) {
+                rows.innerHTML = '<tr><td colspan="3">未发现任何可治理的扩展</td></tr>';
+                return;
+            }
+            for (const name of list) {
+                const isDisabled = disabled.has(name);
+                const row = el(`<tr>
+                    <td>${esc(name)}</td>
+                    <td>${isDisabled ? '<span class="stgi-badge warn">已停用</span>' : '<span class="stgi-badge good">加载中</span>'}</td>
+                    <td><button class="stgi-btn">${isDisabled ? '启用' : '停用'}</button></td>
+                </tr>`);
+                row.querySelector('button').addEventListener('click', async event => {
+                    event.target.disabled = true;
+                    try {
+                        const result = await hostToggleExtensionDisabled(name, !isDisabled);
+                        if (result.ok) {
+                            toast(`${isDisabled ? '已启用' : '已停用'} ${name}，刷新页面后生效`, 'success');
+                            reload();
+                        } else {
+                            toast(result.note || '操作失败', 'error');
+                            event.target.disabled = false;
+                        }
+                    } catch (error) {
+                        toast(String(error.message || error), 'error');
+                        event.target.disabled = false;
+                    }
+                });
+                rows.append(row);
+            }
+        } catch (error) {
+            rows.innerHTML = `<tr><td colspan="3">加载失败: ${esc(String(error.message || error))}</td></tr>`;
+        }
+    }
+    q('reload').addEventListener('click', reload);
+    reload();
+    return section;
+}
+
 function tabBackups(entry) {
     const section = el(`
         <div>
@@ -706,35 +938,17 @@ function tabBackups(entry) {
     return section;
 }
 
-function humanBytes(n) {
-    if (!Number.isFinite(n)) return '';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let value = n;
-    let unit = 0;
-    while (value >= 1024 && unit < units.length - 1) {
-        value /= 1024;
-        unit += 1;
-    }
-    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
-
-let whoamiCache = null;
-async function getWhoami() {
-    if (!whoamiCache) {
-        try {
-            whoamiCache = await api('/whoami');
-        } catch {
-            whoamiCache = { mode: 'unknown', canForce: true };
-        }
-    }
-    return whoamiCache;
-}
-
-function tabSettings(root) {
+async function tabSettings(root) {
+    const pure = RT.mode !== 'server';
     const section = el(`
         <div>
-            <div class="stgi-note">git 流量的代理开关。默认「直连」——完全不依赖环境；「跟随环境变量」读取 HTTP(S)_PROXY/NO_PROXY（回环地址始终豁免）；「自定义」对包括本机地址在内的所有 git 请求使用指定 http(s) 代理。</div>
+            ${pure ? `
             <div class="stgi-section">
+                <div class="stgi-note">纯前端模式：以下服务端设置（git 代理 / 安装去重颗粒度）仅在服务端插件在位时可用；账号管理见「账号」页的导出/导入。</div>
+                <div class="stgi-row"><span class="stgi-note" data-role="feNote"></span></div>
+            </div>` : `
+            <div class="stgi-section">
+                <div class="stgi-note">git 流量的代理开关。默认「直连」——完全不依赖环境；「跟随环境变量」读取 HTTP(S)_PROXY/NO_PROXY（回环地址始终豁免）；「自定义」对包括本机地址在内的所有 git 请求使用指定 http(s) 代理。</div>
                 <div class="stgi-row">
                     <label><input type="radio" name="stgiProxy" value="direct" /> 直连（默认）</label>
                     <label><input type="radio" name="stgiProxy" value="env" /> 跟随环境变量</label>
@@ -757,8 +971,14 @@ function tabSettings(root) {
                     <label><input type="checkbox" data-role="autoDedup" /> 启动时自动清理（仅删除无本地改动的重复副本，有改动的跳过并在日志提示）</label>
                 </div>
                 <div class="stgi-note" data-role="dedupCurrent"></div>
-            </div>
+            </div>`}
         </div>`);
+
+    if (pure) {
+        section.querySelector('[data-role="feNote"]').textContent =
+            `凭据存储通道：${RT.store.storage?.name || '浏览器'}。`;
+        return section;
+    }
 
     const q = role => section.querySelector(`[data-role="${role}"]`);
     const radios = section.querySelectorAll('input[name="stgiProxy"]');
@@ -839,10 +1059,17 @@ function openDialog(title, section) {
     return overlay;
 }
 
-function openMain() {
+async function openMain() {
+    // 初始化运行时上下文：模式探测 + 账号库加载
+    const detection = await detectMode();
+    RT.mode = detection.mode;
+    if (!RT.store) {
+        RT.store = await getSharedStore();
+    }
+
     const root = el('<div></div>');
     const tabs = [
-        ['站点凭据', () => tabSites(root)],
+        ['账号', () => tabAccounts(root)],
         ['私有安装', () => tabInstall(root)],
         ['诊断与修复', () => tabDiagnose(root)],
         ['扩展治理', () => tabGovernance(root)],
@@ -868,7 +1095,10 @@ function openMain() {
         bar.append(tab);
     });
     show(0);
-    openDialog('Git 源管理（补充面板）', root);
+    const modeBadge = RT.mode === 'server'
+        ? '<span class="stgi-badge good">服务端增强</span>'
+        : '<span class="stgi-badge warn">纯前端</span>';
+    openDialog(`Git 源管理（补充面板） ${modeBadge}`, root);
 }
 
 // ---------------------------------------------------------------- entry

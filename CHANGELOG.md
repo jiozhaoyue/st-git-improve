@@ -2,6 +2,39 @@
 
 所有显著变更记录在本文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.7.0] - 2026-10-28
+
+### 新增（纯前端模式 —— 本版核心）
+
+面板现在**不再依赖服务端插件**：`/api/plugins/st-git-improve/health` 探测失败时自动进入
+纯前端模式（L0-11 适配器 + 特性检测 + 静默降级），全部核心功能照常可用：
+
+- **多账号管理（「账号」页）**：每个 git 站点逐个登录多个账号（PAT / userinfo 地址提取），
+  浏览器侧持久化（宿主设置 `extension_settings.st_git_improve`，localStorage 兜底），
+  站点内默认账号可切换；支持 JSON 导出/导入；服务端模式可将账号「推送服务端」同步给插件。
+- **纯前端私有安装**：浏览器内克隆（isomorphic-git 1.27 UMD + 自研 fetch HTTP 客户端 +
+  内存 fs），凭据经 `onAuth` 注入；私有仓库以 `user:token@host` 内嵌凭据交给宿主原生
+  `/api/extensions/install` 通道安装；克隆结果可导出本地 zip 备份。
+- **纯前端治理**：经宿主设置 `disabledExtensions` 开关扩展加载（目录与数据完全不动）。
+- **纯前端诊断**：经宿主原生 discover 列出已装扩展（只读）。
+- 面板标题栏显示运行模式徽标（服务端增强 / 纯前端）。
+
+### 新增（工程）
+
+- `extension/src/core/`：`sites`（站点适配）、`accounts`（多账号库）、`storage`（三通道持久化）、
+  `memfs`（内存 fs）、`zip`（store-only ZIP 写入器，零依赖）、`gitbrowser`（浏览器 git 引擎）、
+  `vendor-loader`、`backend`（模式探测与宿主原生通道）、`installflow`（安装编排）。
+- `extension/vendor/`：isomorphic-git UMD（自带 LICENSE）；`scripts/build-vendor-buffer.mjs`
+  从既有 node_modules 机械拼接 buffer/base64-js/ieee754 生成 `buffer.umd.min.js`（零新依赖）。
+- 纯逻辑单测 31 项（`test/fe-*.test.js`）：zip 往返/CRC 篡改、memfs 语义、URL 解析、
+  多账号库行为；全量 `npm test` 100 项。
+
+### 兼容性说明
+
+- 浏览器直连自建站点（Gitea/GitLab 自建）可能被 CORS 拦截：验证按钮会明确标注
+  「浏览器直连被拦截」，凭据仍保存，实际以 git 操作结果为准。
+- ssh 协议仓库地址明确拒绝（浏览器无 ssh），提示改用 https。
+
 ## [0.6.2] - 2026-10-26
 
 ### 修复（前端面板）
