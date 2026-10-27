@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.7.7';
+const V = '0.7.8';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -17,6 +17,7 @@ const pluginApi = backendMod.pluginApi;
 const hostDiscover = backendMod.hostDiscover;
 const hostSettingsGet = backendMod.hostSettingsGet;
 const hostToggleExtensionDisabled = backendMod.hostToggleExtensionDisabled;
+const hostMoveExtension = backendMod.hostMoveExtension;
 const { getSharedStore } = await import(`./src/core/accounts.js?v=${V}`);
 const { SITE_TYPES, siteKeyOf } = await import(`./src/core/sites.js?v=${V}`);
 const { pureInstall, buildZipBytes } = await import(`./src/core/installflow.js?v=${V}`);
@@ -831,13 +832,13 @@ function tabGovernance(root) {
 async function tabGovernancePure(root) {
     const section = el(`
         <div>
-            <div class="stgi-note">纯前端治理：通过宿主设置开关扩展加载（目录与数据完全不动，刷新后生效）。整目录停用/清理以释放磁盘需要服务端插件。</div>
+            <div class="stgi-note">纯前端治理：停用/启用走宿主设置（目录与数据完全不动，刷新后生效）；「迁全局/迁本地」走宿主迁移通道（目录真实搬移，全局对所有用户生效）。整目录停用区/彻底清理以释放磁盘需要服务端插件。</div>
             <div class="stgi-row">
                 <button class="stgi-btn" data-role="reload">刷新</button>
                 <span class="stgi-note" data-role="note"></span>
             </div>
             <table class="stgi-table"><thead>
-                <tr><th>名称</th><th>加载状态</th><th>操作</th></tr>
+                <tr><th>名称</th><th>加载状态</th><th>加载开关</th><th>安装范围</th></tr>
             </thead><tbody data-role="rows"></tbody></table>
         </div>`);
     const q = role => section.querySelector(`[data-role="${role}"]`);
@@ -862,35 +863,31 @@ async function tabGovernancePure(root) {
         return names;
     }
 
-    async function installedNames() {
-        try {
-            const { ok, entries } = await hostDiscover();
-            if (!ok) return [];
-            return entries.map(e => e.name).filter(Boolean);
-        } catch {
-            return [];
-        }
-    }
-
     async function reload() {
         const rows = q('rows');
         rows.innerHTML = '<tr><td colspan="3">加载中…</td></tr>';
         try {
-            const [disabled, names] = await Promise.all([currentDisabledSet(), installedNames()]);
-            const list = names.length > 0 ? names : [...disabled];
+            const [disabled, discovered] = await Promise.all([currentDisabledSet(), hostDiscover()]);
+            const scopeByName = new Map(discovered.ok ? discovered.entries.map(e => [e.name, e.scope]) : []);
+            const names = discovered.ok && discovered.entries.length > 0
+                ? discovered.entries.map(e => e.name)
+                : [...disabled];
             rows.innerHTML = '';
-            if (list.length === 0) {
-                rows.innerHTML = '<tr><td colspan="3">未发现任何可治理的扩展</td></tr>';
+            if (names.length === 0) {
+                rows.innerHTML = '<tr><td colspan="4">未发现任何可治理的扩展</td></tr>';
                 return;
             }
-            for (const name of list) {
+            for (const name of names) {
                 const isDisabled = disabled.has(name);
+                const scope = scopeByName.get(name) || 'local';
+                const moveLabel = scope === 'global' ? '迁本地' : '迁全局';
                 const row = el(`<tr>
-                    <td>${esc(name)}</td>
+                    <td>${esc(name)}<div class="stgi-note">${scope === 'global' ? '全局扩展（所有用户）' : '用户扩展'}</div></td>
                     <td>${isDisabled ? '<span class="stgi-badge warn">已停用</span>' : '<span class="stgi-badge good">加载中</span>'}</td>
-                    <td><button class="stgi-btn">${isDisabled ? '启用' : '停用'}</button></td>
+                    <td><button class="stgi-btn" data-act="toggle">${isDisabled ? '启用' : '停用'}</button></td>
+                    <td><button class="stgi-btn" data-act="move">${moveLabel}</button></td>
                 </tr>`);
-                row.querySelector('button').addEventListener('click', async event => {
+                row.querySelector('[data-act="toggle"]').addEventListener('click', async event => {
                     event.target.disabled = true;
                     try {
                         const result = await hostToggleExtensionDisabled(name, !isDisabled);
@@ -906,10 +903,31 @@ async function tabGovernancePure(root) {
                         event.target.disabled = false;
                     }
                 });
+                row.querySelector('[data-act="move"]').addEventListener('click', async event => {
+                    const destination = scope === 'global' ? 'local' : 'global';
+                    if (destination === 'global' &&
+                        !window.confirm(`把 ${name} 迁移为全局扩展？全局扩展对实例上所有用户生效。`)) {
+                        return;
+                    }
+                    event.target.disabled = true;
+                    try {
+                        const result = await hostMoveExtension(name, scope, destination);
+                        if (result.ok) {
+                            toast(`已迁移 ${name} → ${destination === 'global' ? '全局' : '本地'}，刷新页面后生效`, 'success');
+                            reload();
+                        } else {
+                            toast(result.note || '迁移失败', 'error');
+                            event.target.disabled = false;
+                        }
+                    } catch (error) {
+                        toast(String(error.message || error), 'error');
+                        event.target.disabled = false;
+                    }
+                });
                 rows.append(row);
             }
         } catch (error) {
-            rows.innerHTML = `<tr><td colspan="3">加载失败: ${esc(String(error.message || error))}</td></tr>`;
+            rows.innerHTML = `<tr><td colspan="4">加载失败: ${esc(String(error.message || error))}</td></tr>`;
         }
     }
     q('reload').addEventListener('click', reload);

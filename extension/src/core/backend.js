@@ -174,6 +174,18 @@ export async function hostToggleExtensionDisabled(name, disable) {
 
 // ---------------------------------------------------------------- 统一操作门面
 
+/** 宿主原生扩展迁移（local ↔ global）。
+ * 实测契约（ST 1.19）：POST /api/extensions/move，body
+ * { extensionName: '<不带 third-party/ 前缀>', source: 'local'|'global', destination: 'local'|'global' }，
+ * 成功返回 204（无 body）。 */
+export async function hostMoveExtension(name, source, destination) {
+    const result = await hostApi('/api/extensions/move', {
+        body: { extensionName: String(name || '').replace(/^third-party\//, ''), source, destination },
+    });
+    if (result.status === 204) return { ok: true };
+    return { ok: result.ok, note: result.data?.error || result.data?.raw || `HTTP ${result.status}` };
+}
+
 export function getBackend() {
     return {
         mode: modeCache?.mode || 'pure',
