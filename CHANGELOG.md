@@ -2,6 +2,25 @@
 
 所有显著变更记录在本文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.2] - 2026-10-28
+
+### 新增（治理一致性）
+
+- 服务端治理只读合并宿主设置禁用状态：`listGovernance` 读取宿主
+  `extension_settings.disabledExtensions`（兼容旧根级形态），local/global 条目带
+  `settingsDisabled` 标记，响应含 `settingsDisabledNames`；面板服务端治理页为这类
+  条目显示「宿主设置停用」徽标（与整目录停用区分）。**刻意只读不写宿主设置**
+  （服务端直写 settings.json 会与宿主内存态竞态）。测试 +1，`npm test` 107 项。
+
+## [0.8.1] - 2026-10-28
+
+### 新增（面板回退守卫）
+
+- 服务端插件 `/health` 新增 `panelVersions {bundled, installed}`
+  （`bootstrapFrontendExtension` 返回版本对）；面板比较内置副本与当前版本，
+  **内置副本落后时在设置页显著警告**「宿主重启会回退面板 + 指明需同步的目录」
+  （第十二节实测隐患的产品化）。`compareVersions` 三段比较含单测，`npm test` 106 项。
+
 ## [0.8.0] - 2026-10-28
 
 ### 新增（纯前端能力补全）
