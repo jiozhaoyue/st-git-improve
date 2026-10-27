@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.7.8';
+const V = '0.7.9';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -621,12 +621,50 @@ async function tabDiagnosePure(root) {
             <div class="stgi-note">纯前端模式：列出宿主已装第三方扩展。本面板安装的扩展登记了来源，可直接「更新」（重跑安装流程取最新版）；依赖修复 / 备份恢复 / 去重需要服务端插件（可选增强）。</div>
             <div class="stgi-row">
                 <button class="stgi-btn" data-role="reload">扫描已装扩展</button>
+                <button class="stgi-btn" data-role="updateAll">全部更新（已登记来源的）</button>
             </div>
             <table class="stgi-table"><thead>
                 <tr><th>名称</th><th>显示名</th><th>版本</th><th>操作</th></tr>
             </thead><tbody data-role="rows"></tbody></table>
         </div>`);
     const q = role => section.querySelector(`[data-role="${role}"]`);
+
+    q('updateAll').addEventListener('click', async event => {
+        const button = event.target;
+        button.disabled = true;
+        const installs = Object.entries(RT.store.getInstalls());
+        if (installs.length === 0) {
+            toast('没有登记过来源的扩展（用「私有安装」装过才有）', 'error');
+            button.disabled = false;
+            return;
+        }
+        const logBox = el('<div class="stgi-log" style="display:block"></div>');
+        openDialog('全部更新（纯前端 · 顺序执行）', logBox);
+        const append = line => { logBox.textContent += `${line}\n`; logBox.scrollTop = logBox.scrollHeight; };
+        append(`共 ${installs.length} 个待更新扩展`);
+        let okCount = 0;
+        const failed = [];
+        for (const [name, origin] of installs) {
+            append(`—— ${name} ——`);
+            try {
+                await pureInstall({
+                    url: origin.url,
+                    branch: origin.branch || undefined,
+                    target: origin.target || 'extension',
+                    accounts: RT.store,
+                    onLog: append,
+                });
+                okCount += 1;
+            } catch (error) {
+                failed.push(name);
+                append(`失败: ${error.message || error}`);
+            }
+        }
+        append(`完成：成功 ${okCount}，失败 ${failed.length}${failed.length ? `（${failed.join('、')}）` : ''}。刷新页面后生效。`);
+        toast(`全部更新完成：成功 ${okCount}，失败 ${failed.length}`, failed.length > 0 ? 'error' : 'success');
+        reload();
+        button.disabled = false;
+    });
 
     async function runUpdate(origin, displayName) {
         const logBox = el('<div class="stgi-log" style="display:block"></div>');
@@ -1033,6 +1071,21 @@ async function tabSettings(root) {
     if (pure) {
         section.querySelector('[data-role="feNote"]').textContent =
             `凭据存储通道：${RT.store.storage?.name || '浏览器'}。`;
+        const row = section.querySelector('[data-role="feNote"]').closest('.stgi-row');
+        row.append(el('<button class="stgi-btn" data-role="redetect">重新探测运行模式</button>'));
+        row.querySelector('[data-role="redetect"]').addEventListener('click', async event => {
+            event.target.disabled = true;
+            const before = RT.mode;
+            const detection = await detectMode({ force: true });
+            RT.mode = detection.mode;
+            toast(`探测完成：${RT.mode === 'server' ? '服务端增强' : '纯前端'}${before !== RT.mode ? '（模式已变化，重新打开面板生效）' : ''}`, 'success');
+            if (before !== RT.mode) {
+                document.querySelector('.stgi-overlay')?.remove();
+                openMain();
+            } else {
+                event.target.disabled = false;
+            }
+        });
         return section;
     }
 
