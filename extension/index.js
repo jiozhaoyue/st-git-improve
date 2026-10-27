@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.2';
+const V = '0.8.3';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;

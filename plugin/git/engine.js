@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
 
 import * as git from 'isomorphic-git';
 
@@ -23,11 +24,132 @@ function onAuthFactory(authResolver) {
     };
 }
 
+// ------------------------- SSH / file 桥（系统 git 通道） -------------------------
+
+/**
+ * 判断 URL 是否需要系统 git 通道（isomorphic-git 只支持 http/https）。
+ * 接受 ssh://、scp 语法（git@host:path）、git:// 与 file://。
+ * @param {string} url
+ */
+export function isSystemGitUrl(url) {
+    const raw = String(url || '').trim();
+    if (/^file:\/\//i.test(raw)) return true;
+    if (/^ssh:\/\//i.test(raw)) return true;
+    if (/^git:\/\//i.test(raw)) return true;
+    return /^[^@/]+@[^:/]+:.+$/.test(raw) && !/^https?:\/\//i.test(raw);
+}
+
+let systemGitAvailableCache;
+/**
+ * 系统 git 是否可用（结果缓存）。
+ * @returns {boolean}
+ */
+export function systemGitAvailable() {
+    if (systemGitAvailableCache === undefined) {
+        try {
+            const { status } = spawnSync('git', ['--version'], {
+                encoding: 'utf8',
+                windowsHide: true,
+                env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+            });
+            systemGitAvailableCache = status === 0;
+        } catch {
+            systemGitAvailableCache = false;
+        }
+    }
+    return systemGitAvailableCache;
+}
+
+/**
+ * 运行系统 git（异步，拒绝交互式提示；stdout/stderr 以 utf8 收集）。
+ * @param {string[]} args
+ * @param {{ cwd?: string }} [options]
+ * @returns {Promise<{ status: number, stdout: string, stderr: string }>}
+ */
+function runSystemGit(args, options = {}) {
+    return new Promise((resolve, reject) => {
+        const child = spawn('git', args, {
+            cwd: options.cwd,
+            env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'echo', GCM_INTERACTIVE: 'never' },
+            windowsHide: true,
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', reject);
+        child.on('close', status => resolve({ status, stdout, stderr }));
+    });
+}
+
+/**
+ * 把 scp 语法（git@host:path）规范化为 ssh:// 形式，其余原样返回。
+ * @param {string} url
+ * @returns {string}
+ */
+export function toSystemGitUrl(url) {
+    const raw = String(url || '').trim();
+    const scp = raw.match(/^([^@/]+)@([^:/]+):(?!\d)(.+)$/);
+    if (scp && !/^[a-z]+:\/\//i.test(raw)) {
+        return `ssh://${scp[1]}@${scp[2]}/${scp[3].replace(/^\/+/, '')}`;
+    }
+    return raw;
+}
+
+/**
+ * 系统 git 克隆（完整历史，不做浅克隆——浅克隆重会让 isomorphic-git 的
+ * 本地对象读取在 graft 提交上不可靠）。
+ * @param {{ url: string, dir: string, branch?: string }} options
+ */
+export async function systemGitClone({ url, dir, branch }) {
+    fs.mkdirSync(path.dirname(dir), { recursive: true });
+    const args = ['clone', toSystemGitUrl(url), dir];
+    if (branch) args.push('--branch', branch, '--single-branch');
+    const { status, stderr } = await runSystemGit(args);
+    if (status !== 0) {
+        throw new Error(stderr.trim() || `git clone 退出码 ${status}`);
+    }
+}
+
+/**
+ * 系统 git 列出远端分支 head（ls-remote）。
+ * @param {{ url: string, branch: string }} options
+ * @returns {Promise<string>} OID 或 ''
+ */
+export async function systemGitRemoteHead({ url, branch }) {
+    const { status, stdout } = await runSystemGit(['ls-remote', toSystemGitUrl(url), `refs/heads/${branch}`]);
+    if (status !== 0) {
+        throw new Error(`git ls-remote 失败`);
+    }
+    return stdout.split('\n')[0]?.split('\t')[0]?.trim() || '';
+}
+
+/**
+ * 系统 git 拉取远端分支并更新 origin 跟踪引用（完整拉取，供 isomorphic-git
+ * 的本地对象读取与后续 advance/checkout 使用）。
+ * @param {{ dir: string, branch: string }} options
+ */
+export async function systemGitFetch({ dir, branch }) {
+    const { status, stderr } = await runSystemGit(['fetch', 'origin', `${branch}:refs/remotes/origin/${branch}`], { cwd: dir });
+    if (status !== 0) {
+        throw new Error(stderr.trim() || `git fetch 退出码 ${status}`);
+    }
+}
+
+// ------------------------- isomorphic-git 主通道 -------------------------
+
 /**
  * Clone a repository (shallow, single branch by default).
+ * http/https 走 isomorphic-git（零系统依赖）；ssh/git@/file 走系统 git 桥。
  * @param {{ url: string, dir: string, branch?: string, depth?: number, authResolver?: AuthResolver, onProgress?: (event: object) => void }} options
  */
 export async function clone({ url, dir, branch, depth = 1, authResolver, onProgress }) {
+    if (isSystemGitUrl(url)) {
+        if (!systemGitAvailable()) {
+            throw new Error('SSH/file 远端需要系统 git（PATH 中未检测到 git）');
+        }
+        return systemGitClone({ url, dir, branch });
+    }
     fs.mkdirSync(path.dirname(dir), { recursive: true });
     await git.clone({
         fs,
@@ -49,6 +171,19 @@ export async function clone({ url, dir, branch, depth = 1, authResolver, onProgr
  * @returns {Promise<Array<{ ref: string, oid: string }>>}
  */
 export async function listRemoteBranches({ url, authResolver }) {
+    if (isSystemGitUrl(url)) {
+        if (!systemGitAvailable()) {
+            throw new Error('SSH/file 远端需要系统 git（PATH 中未检测到 git）');
+        }
+        const { status, stdout, stderr } = await runSystemGit(['ls-remote', toSystemGitUrl(url), 'refs/heads/*']);
+        if (status !== 0) {
+            throw new Error(stderr.trim() || 'git ls-remote 失败');
+        }
+        return stdout.split('\n').filter(Boolean).map(line => {
+            const [oid, ref] = line.split('\t');
+            return { ref: (ref || '').trim(), oid: (oid || '').trim() };
+        }).filter(entry => entry.ref && entry.oid);
+    }
     const refs = await git.listServerRefs({
         fs,
         http,
@@ -61,9 +196,16 @@ export async function listRemoteBranches({ url, authResolver }) {
 
 /**
  * Shallow-fetch a branch's newest commit into the local repo.
+ * ssh/file 远端走系统 git 完整拉取（并更新 origin 跟踪引用）。
  * @param {{ dir: string, url: string, branch: string, authResolver?: AuthResolver }} options
  */
 export async function fetchBranch({ dir, url, branch, authResolver }) {
+    if (isSystemGitUrl(url)) {
+        if (!systemGitAvailable()) {
+            throw new Error('SSH/file 远端需要系统 git（PATH 中未检测到 git）');
+        }
+        return systemGitFetch({ dir, branch });
+    }
     await git.fetch({
         fs,
         http,

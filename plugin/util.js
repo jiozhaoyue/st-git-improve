@@ -9,7 +9,12 @@ import path from 'node:path';
  * @returns {string}
  */
 export function normalizeRepoUrl(url) {
-    const raw = String(url || '').trim();
+    let raw = String(url || '').trim();
+    // scp 语法（git@host:path）→ ssh:// 标准形式，统一后续解析
+    const scp = raw.match(/^([^@/]+)@([^:/]+):(?!\d)(.+)$/);
+    if (scp && !/^[a-z]+:\/\//i.test(raw)) {
+        raw = `ssh://${scp[1]}@${scp[2]}/${scp[3].replace(/^\/+/, '')}`;
+    }
     const parsed = new URL(raw);
     const normalized = new URL(parsed.toString());
     normalized.search = '';
