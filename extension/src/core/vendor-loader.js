@@ -4,7 +4,7 @@
 const loaded = new Map();
 
 // 版本参数：与 manifest.json version 同步（宿主对 vendor 脚本同样有 HTTP 缓存）。
-const V = '0.7.6';
+const V = '0.8.0';
 
 function scriptUrl(relative) {
     // 相对 import.meta.url 解析，兼容宿主以任意路径安装扩展。
