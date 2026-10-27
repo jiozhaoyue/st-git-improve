@@ -3,6 +3,9 @@
 
 const loaded = new Map();
 
+// 版本参数：与 manifest.json version 同步（宿主对 vendor 脚本同样有 HTTP 缓存）。
+const V = '0.7.6';
+
 function scriptUrl(relative) {
     // 相对 import.meta.url 解析，兼容宿主以任意路径安装扩展。
     return new URL(relative, import.meta.url).href;
@@ -36,10 +39,10 @@ export function loadGit() {
                 throw new Error('gitbrowser 仅可在浏览器环境使用');
             }
             if (!window.Buffer) {
-                await loadScript(scriptUrl('../../vendor/buffer.umd.min.js'));
+                await loadScript(scriptUrl(`../../vendor/buffer.umd.min.js?v=${V}`));
             }
             if (!window.git) {
-                await loadScript(scriptUrl('../../vendor/isomorphic-git.umd.min.js'));
+                await loadScript(scriptUrl(`../../vendor/isomorphic-git.umd.min.js?v=${V}`));
             }
             if (!window.git) {
                 throw new Error('isomorphic-git 加载后仍不可用');

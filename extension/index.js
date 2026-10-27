@@ -7,16 +7,19 @@
 //   - 纯前端（插件不在位）→ 浏览器内克隆（isomorphic-git）+ 宿主原生安装通道；
 //     账号凭据保存在浏览器侧（宿主设置 / localStorage），逐个登录、可多个。
 
-import {
-    detectMode,
-    pluginApi,
-    hostDiscover,
-    hostSettingsGet,
-    hostToggleExtensionDisabled,
-} from './src/core/backend.js';
-import { getSharedStore } from './src/core/accounts.js';
-import { SITE_TYPES, siteKeyOf } from './src/core/sites.js';
-import { pureInstall, buildZipBytes } from './src/core/installflow.js';
+// 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
+// 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
+const V = '0.7.6';
+
+const backendMod = await import(`./src/core/backend.js?v=${V}`);
+const detectMode = backendMod.detectMode;
+const pluginApi = backendMod.pluginApi;
+const hostDiscover = backendMod.hostDiscover;
+const hostSettingsGet = backendMod.hostSettingsGet;
+const hostToggleExtensionDisabled = backendMod.hostToggleExtensionDisabled;
+const { getSharedStore } = await import(`./src/core/accounts.js?v=${V}`);
+const { SITE_TYPES, siteKeyOf } = await import(`./src/core/sites.js?v=${V}`);
+const { pureInstall, buildZipBytes } = await import(`./src/core/installflow.js?v=${V}`);
 
 function toast(msg, kind = 'info') {
     const toastr = window.toastr;
@@ -365,14 +368,16 @@ async function tabInstall(root) {
                     onLog: append,
                 });
                 append(`完成: ${result.name}（宿主原生通道）`);
-                // 附加能力：把克隆结果导出为本地 zip（数据备份/手动上传双保险）
-                try {
-                    const bytes = buildZipBytes(result.cloned);
-                    const href = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
-                    const link = el(`<a class="stgi-btn" href="${href}" download="${esc(result.name || 'repository')}.zip">保存 zip 副本</a>`);
-                    log.append(el('<div></div>'), link);
-                    setTimeout(() => URL.revokeObjectURL(href), 60000);
-                } catch { /* 导出失败不影响安装结果 */ }
+                // 附加能力：克隆成功时把结果导出为本地 zip（数据备份/手动上传双保险）
+                if (result.cloned) {
+                    try {
+                        const bytes = buildZipBytes(result.cloned);
+                        const href = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
+                        const link = el(`<a class="stgi-btn" href="${href}" download="${esc(result.name || 'repository')}.zip">保存 zip 副本</a>`);
+                        log.append(el('<div></div>'), link);
+                        setTimeout(() => URL.revokeObjectURL(href), 60000);
+                    } catch { /* 导出失败不影响安装结果 */ }
+                }
                 toast('安装完成，刷新页面后生效', 'success');
             }
         } catch (error) {
@@ -622,9 +627,8 @@ async function tabDiagnosePure(root) {
         const rows = q('rows');
         rows.innerHTML = '<tr><td colspan="3">扫描中…</td></tr>';
         try {
-            const { status, ok, data } = await hostDiscover();
+            const { status, ok, entries } = await hostDiscover();
             if (!ok) throw new Error(`宿主 discover 失败（HTTP ${status}）`);
-            const entries = Array.isArray(data) ? data : (data?.extensions || []);
             rows.innerHTML = '';
             if (entries.length === 0) {
                 rows.innerHTML = '<tr><td colspan="3">未发现任何第三方扩展</td></tr>';
@@ -811,13 +815,16 @@ async function tabGovernancePure(root) {
         if (!settings.ok || !settings.data) {
             throw new Error(`宿主设置不可达（HTTP ${settings.status}）`);
         }
-        const container = settings.data.disabledExtensions;
+        // 实测键位：extension_settings.disabledExtensions（条目 'third-party/<name>'）；兼容旧根级形态。
+        const data = settings.data;
+        const container = data.extension_settings?.disabledExtensions ?? data.disabledExtensions;
         const names = new Set();
+        const add = n => { if (typeof n === 'string') names.add(n.replace(/^third-party\//, '')); };
         if (Array.isArray(container)) {
-            for (const n of container) names.add(n);
+            for (const n of container) add(n);
         } else if (container && typeof container === 'object') {
             for (const bucket of Object.values(container)) {
-                if (Array.isArray(bucket)) for (const n of bucket) names.add(n);
+                if (Array.isArray(bucket)) for (const n of bucket) add(n);
             }
         }
         return names;
@@ -825,9 +832,8 @@ async function tabGovernancePure(root) {
 
     async function installedNames() {
         try {
-            const { ok, data } = await hostDiscover();
+            const { ok, entries } = await hostDiscover();
             if (!ok) return [];
-            const entries = Array.isArray(data) ? data : (data?.extensions || []);
             return entries.map(e => e.name).filter(Boolean);
         } catch {
             return [];

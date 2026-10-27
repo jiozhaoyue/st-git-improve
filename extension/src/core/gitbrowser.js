@@ -2,8 +2,11 @@
 // 支持 GitHub / GitLab / Gitea(smart http) 的 http(s) 克隆，凭据经 onAuth 注入。
 // UMD 构建不导出内置 http 客户端 —— 按官方文档定义的 HTTP 客户端接口用 fetch 实现。
 
-import { createMemfs } from './memfs.js';
-import { loadGit } from './vendor-loader.js';
+// 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
+const V = '0.7.6';
+
+const { createMemfs } = await import(`./memfs.js?v=${V}`);
+const { loadGit } = await import(`./vendor-loader.js?v=${V}`);
 
 /** 把 WHATWG ReadableStream 适配为 async 可迭代（规避跨 realm 的 instanceof 检查）。 */
 async function* streamChunks(body) {

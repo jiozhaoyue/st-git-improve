@@ -2,6 +2,31 @@
 
 所有显著变更记录在本文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.7.6] - 2026-10-28
+
+### 修复（全部来自 Dev 实例活体实测，0.7.1–0.7.6 合并记录）
+
+- **纯前端安装对 CORS 的正确降级**：GitHub 等 git 端点不发 CORS 头，浏览器内克隆必然失败。
+  改为「API 预检（支持 CORS，能给出 401/404 的清晰错误）→ 宿主原生安装（服务端克隆，无 CORS 约束）
+  为主路径」，浏览器内克隆降级为 zip 导出增强，失败不再阻断安装。
+- **凭据持久化竞态**：`saveSettingsDebounced` 存在静默丢写；ST 通道改为双保险
+  （上下文保存 + `/api/settings/get→save` 直写）。实测 ST 1.19 契约：GET 返回
+  `{ settings: "<JSON 字符串>" }`，POST 请求体为**裸 settings 对象**。
+- **多通道合并**：读取时按（类型+地址+用户名）对宿主设置/localStorage 两通道去重合并，
+  任一通道的数据不再被另一通道覆盖丢失；defaults 只保留指向存在账号的映射。
+- **扩展模块 HTTP 缓存**：宿主缓存扩展模块文件，更新后旧代码继续生效。全部跨模块 import
+  带上 `?v=<manifest version>` 参数，发版时同步修改 `const V`（vendor 脚本同样处理）。
+- **纯前端治理键位**：实测宿主读取 `extension_settings.disabledExtensions`（条目
+  `third-party/<name>`）并在重载时拒载清单内扩展；按此实现停用/启用（此前写在根级字段
+  被保存端点静默忽略）。
+- **诊断列表端点**：`GET /api/extensions/discover`（无 body）返回
+  `[{type:'local'|'global'|'system', name:'third-party/<名称>'}]`；修正调用方式与第三方过滤。
+
+### 实测覆盖（Dev ST 8001 · 纯前端模式）
+
+账号添加→自动验证(jiozhaoyue)→双通道落盘→重载恢复；私有仓 ST-Switcher 安装→宿主识别；
+治理停用→宿主拒载（仅拉 manifest）→启用→恢复加载。全量 `npm test` 104 项。
+
 ## [0.7.0] - 2026-10-28
 
 ### 新增（纯前端模式 —— 本版核心）

@@ -2,7 +2,11 @@
 // （宿主设置/localStorage，见 storage.js），并可指定每个站点的默认账号。
 // 纯逻辑、无 DOM 依赖 —— 存储适配器由外部注入，可直接单测。
 
-import { getAdapter, parseRepoUrl, siteKeyOf, extractUserinfo, defaultBaseUrl, normalizeBaseUrl } from './sites.js';
+// 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
+const V = '0.7.6';
+
+const { getAdapter, parseRepoUrl, siteKeyOf, extractUserinfo, defaultBaseUrl, normalizeBaseUrl } =
+    await import(`./sites.js?v=${V}`);
 
 function nowSec() {
     return Math.floor(Date.now() / 1000);
@@ -228,7 +232,7 @@ let shared = null;
 /** 面板共享实例（惰性创建，storage 自动选通道）。 */
 export async function getSharedStore() {
     if (!shared) {
-        const { createStorage } = await import('./storage.js');
+        const { createStorage } = await import(`./storage.js?v=${V}`);
         shared = new AccountStore(createStorage());
         await shared.load();
     }

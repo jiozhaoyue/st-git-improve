@@ -94,20 +94,55 @@ export async function hostNativeInstall({ authedUrl, global: isGlobal, branch })
     return result;
 }
 
-/** 宿主原生扩展发现（诊断降级用）。 */
+/** 宿主原生扩展发现（诊断/治理列表用）。
+ * 实测契约（ST 1.19）：GET /api/extensions/discover（无 body、无需 CSRF）返回
+ * [{ type: 'local'|'global'|'system', name: 'third-party/<名称>', ... }]；POST 形态不存在（404）。
+ * 映射：只保留 local/global，剥掉 third-party/ 前缀，scope 记录安装范围。 */
 export async function hostDiscover() {
-    const result = await hostApi('/api/extensions/discover', { method: 'POST', body: {} });
+    const result = await hostApi('/api/extensions/discover');
+    if (result.ok && Array.isArray(result.data)) {
+        const entries = result.data
+            .filter(e => e && (e.type === 'local' || e.type === 'global'))
+            .map(e => ({
+                ...e,
+                name: String(e.name || '').replace(/^third-party\//, ''),
+                scope: e.type,
+            }));
+        return { ...result, entries };
+    }
+    return { ...result, entries: [] };
+}
+
+/** 宿主原生设置读取（治理降级用）。返回解析后的完整 settings 对象。 */
+export async function hostSettingsGet() {
+    const result = await hostApi('/api/settings/get', { body: {} });
+    if (result.ok && result.data?.settings != null) {
+        // 实测 ST 1.19：返回 { settings: "<整份设置的 JSON 字符串>" }
+        let settings = result.data.settings;
+        if (typeof settings === 'string') {
+            try {
+                settings = JSON.parse(settings);
+            } catch {
+                return { ok: false, status: 'settings-parse-failed', data: null };
+            }
+        }
+        return { ok: true, status: result.status, data: settings };
+    }
     return result;
 }
 
-/** 宿主原生设置读取（治理降级用）。 */
-export async function hostSettingsGet() {
-    const result = await hostApi('/api/settings/get', { body: {} });
+/** 宿主原生设置整体保存（fetch-mutate-post 持久性直写；宿主 UI 同款通道）。
+ * 实测契约（ST 1.19）：GET /api/settings/get 返回 { settings: "<JSON 字符串>" }，
+ * 而 POST /api/settings/save 的请求体是**裸 settings 对象**（无包裹）。 */
+export async function hostSettingsSave(settingsPayload) {
+    const result = await hostApi('/api/settings/save', { body: settingsPayload });
     return result;
 }
 
 /**
- * 纯前端扩展治理：切换宿主设置中的 disabledExtensions。
+ * 纯前端扩展治理：切换宿主设置中的禁用清单。
+ * 实测契约（ST 1.19）：宿主读取 `extension_settings.disabledExtensions`（数组，
+ * 条目形如 'third-party/<name>'），在清单内的扩展重载后不加载（仅拉 manifest）。
  * 返回 { ok, disabled, note }；宿主设置不可达时 ok=false。
  */
 export async function hostToggleExtensionDisabled(name, disable) {
@@ -116,28 +151,21 @@ export async function hostToggleExtensionDisabled(name, disable) {
         return { ok: false, note: `宿主设置不可达（HTTP ${settings.status}）` };
     }
     const data = settings.data;
-    // 兼容两种形态：disabledExtensions 为数组，或对象（按用户句柄分桶）。
-    let container = data.disabledExtensions;
-    if (Array.isArray(container)) {
-        const set = new Set(container);
-        if (disable) set.add(name); else set.delete(name);
-        data.disabledExtensions = [...set];
-    } else if (container && typeof container === 'object') {
-        for (const key of Object.keys(container)) {
-            const bucket = container[key];
-            if (!Array.isArray(bucket)) continue;
-            const set = new Set(bucket);
-            const had = set.has(name);
-            if (disable && had) continue;
-            if (!disable && !had) continue;
-            if (disable) set.add(name); else set.delete(name);
-            bucket.length = 0;
-            bucket.push(...set);
-        }
-    } else {
-        return { ok: false, note: '设置中没有 disabledExtensions 字段（宿主版本不兼容？）' };
+    data.extension_settings = data.extension_settings || {};
+    const prefixed = `third-party/${name}`;
+    // 主键位：extension_settings.disabledExtensions；兼容旧形态（根级字段/对象分桶）。
+    let container = data.extension_settings.disabledExtensions;
+    if (container == null) {
+        const root = data.disabledExtensions;
+        container = Array.isArray(root) ? [...root] : (root && typeof root === 'object')
+            ? [...new Set(Object.values(root).flat().filter(x => typeof x === 'string'))]
+            : [];
     }
-    const save = await hostApi('/api/settings/save', { body: data });
+    if (!Array.isArray(container)) container = [];
+    const set = new Set(container);
+    if (disable) set.add(prefixed); else set.delete(prefixed);
+    data.extension_settings.disabledExtensions = [...set];
+    const save = await hostSettingsSave(data);
     if (!save.ok) {
         return { ok: false, note: `保存设置失败（HTTP ${save.status}）` };
     }
