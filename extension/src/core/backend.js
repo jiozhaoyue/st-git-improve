@@ -43,6 +43,17 @@ export async function pluginApi(path, options = {}) {
 
 let modeCache = null;
 
+/** 简单三段版本比较：a < b → -1，相等 → 0，a > b → 1。非法段按 0 处理。 */
+export function compareVersions(a, b) {
+    const pa = String(a || '').split('.').map(n => parseInt(n, 10) || 0);
+    const pb = String(b || '').split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < 3; i++) {
+        const diff = (pa[i] || 0) - (pb[i] || 0);
+        if (diff !== 0) return diff < 0 ? -1 : 1;
+    }
+    return 0;
+}
+
 /** 探测运行模式：'server'（服务端插件在位）| 'pure'（纯前端）。 */
 export async function detectMode({ force = false } = {}) {
     if (modeCache && !force) return modeCache;

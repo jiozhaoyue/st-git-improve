@@ -29,16 +29,20 @@ export const info = {
  * @param {{ dirs: object }} context
  */
 function bootstrapFrontendExtension(context) {
+    const versions = { bundled: '', installed: '' };
     const sourceDir = path.join(packageRoot, 'extension');
     const manifestSource = path.join(sourceDir, 'manifest.json');
     if (!fs.existsSync(manifestSource)) {
         console.warn('[st-git-improve] extension/ manifest missing, skip bootstrap');
+        context.panelVersions = versions;
         return;
     }
     let version = '';
     try {
         version = String(JSON.parse(fs.readFileSync(manifestSource, 'utf8')).version || '');
+        versions.bundled = version;
     } catch {
+        context.panelVersions = versions;
         return;
     }
     const targetDir = path.join(context.dirs.localExtensionsDir, info.id);
@@ -46,17 +50,22 @@ function bootstrapFrontendExtension(context) {
     let installedVersion = '';
     try {
         installedVersion = String(JSON.parse(fs.readFileSync(manifestTarget, 'utf8')).version || '');
+        versions.installed = installedVersion;
     } catch {
         /* not installed yet */
     }
     if (version && version === installedVersion && fs.existsSync(path.join(targetDir, 'index.js'))) {
+        context.panelVersions = versions;
         return;
     }
     fs.mkdirSync(targetDir, { recursive: true });
     for (const file of fs.readdirSync(sourceDir)) {
         fs.cpSync(path.join(sourceDir, file), path.join(targetDir, file), { force: true });
     }
+    versions.installed = version;
+    context.panelVersions = versions;
     console.info(`[st-git-improve] front-end panel installed to ${targetDir} (v${version})`);
+    return versions;
 }
 
 /**

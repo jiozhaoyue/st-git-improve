@@ -99,7 +99,11 @@ export function createRouter(context) {
         }
     };
 
-    router.get('/health', wrap(() => ({ ok: true, tavernRoot: context.tavernRoot })));
+    router.get('/health', wrap(() => ({
+        ok: true,
+        tavernRoot: context.tavernRoot,
+        panelVersions: context.panelVersions || { bundled: '', installed: '' },
+    })));
 
     // ---------- settings ----------
     router.get('/settings', wrap(() => ({

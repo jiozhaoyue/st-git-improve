@@ -9,10 +9,11 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.0';
+const V = '0.8.1';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
+const compareVersions = backendMod.compareVersions;
 const pluginApi = backendMod.pluginApi;
 const hostDiscover = backendMod.hostDiscover;
 const hostSettingsGet = backendMod.hostSettingsGet;
@@ -1042,6 +1043,17 @@ function tabBackups(entry) {
     return section;
 }
 
+/** 面板回退守卫：服务端插件内置面板副本落后于当前面板时给出明确警告（第十二节隐患的 UI 化）。 */
+function appendPanelVersionGuard(section) {
+    try {
+        const bundled = RT.panelVersions?.bundled || '';
+        if (!bundled || !V) return;
+        if (compareVersions(bundled, V) < 0) {
+            section.prepend(el(`<div class="stgi-section"><div class="stgi-note">⚠️ <b>面板回退风险</b>：服务端插件内置面板副本为 v${esc(bundled)}，落后于当前面板 v${esc(V)}——宿主重启会把面板覆盖回退到旧版。请同步更新实例上的 <b>plugins/st-git-improve/extension/</b> 目录（与 data 内副本一致即可）。</div></div>`));
+        }
+    } catch { /* 守卫失败不影响设置页 */ }
+}
+
 async function tabSettings(root) {
     const pure = RT.mode !== 'server';
     const section = el(`
@@ -1096,8 +1108,11 @@ async function tabSettings(root) {
                 event.target.disabled = false;
             }
         });
+        appendPanelVersionGuard(section);
         return section;
     }
+
+    appendPanelVersionGuard(section);
 
     const q = role => section.querySelector(`[data-role="${role}"]`);
     const radios = section.querySelectorAll('input[name="stgiProxy"]');
@@ -1182,6 +1197,7 @@ async function openMain() {
     // 初始化运行时上下文：模式探测 + 账号库加载
     const detection = await detectMode();
     RT.mode = detection.mode;
+    RT.panelVersions = detection.info?.panelVersions || null;
     if (!RT.store) {
         RT.store = await getSharedStore();
     }
