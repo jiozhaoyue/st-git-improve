@@ -312,7 +312,7 @@ async function tabInstall(root) {
         <div>
             <div class="stgi-note">${pure
             ? '纯前端模式：浏览器内克隆（支持私有仓库，凭据来自「账号」页），再交给宿主原生安装通道。'
-            : '安装私有/任意 http(s) git 仓库。目标站点已保存登录时自动认证。前端扩展装到当前用户，服务端插件装到 plugins/。'}</div>
+            : '安装私有/任意 git 仓库：http(s)（站点凭据自动认证）或 SSH/file 地址（git@host:path、ssh://、file://，走系统 git 与你自己的 ssh-agent）。前端扩展装到当前用户，服务端插件装到 plugins/。'}</div>
             <div class="stgi-section">
                 <div class="stgi-row">
                     <input data-role="url" placeholder="仓库地址 https://..." style="flex:3 1 260px" />
