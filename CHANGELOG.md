@@ -2,6 +2,15 @@
 
 所有显著变更记录在本文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.3] - 2026-10-28
+
+### 新增（SSH/file 桥——README 二期承诺落地）
+
+- 引擎新增系统 git 通道：`git@host:path`（scp 语法）、`ssh://`、`file://`、`git://` 地址在服务端插件的安装/更新/诊断中自动路由（clone / ls-remote / fetch 全覆盖；完整克隆避免浅克隆重 graft 问题；更新时 isomorphic-git 的本地对象读取与备份/前进语义不变）。
+- `normalizeRepoUrl` 接受 scp 语法并规范化为 `ssh://`。
+- 凭据：SSH 走用户自己的 ssh-agent/askpass（不经过凭据存储）；无系统 git 时明确报错。
+- 密闭测试 +5（本地裸仓 + file:// 全流程：安装 / 重建式更新 / 已是最新），`npm test` 112 项。纯前端模式仍不支持 SSH（浏览器无此能力）。
+
 ## [0.8.2] - 2026-10-28
 
 ### 新增（治理一致性）

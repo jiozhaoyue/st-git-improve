@@ -122,7 +122,7 @@ npm run test:integration # 无 git 二进制环境下的 clone 集成测试（�
 
 - 多用户：宿主开启多用户时按登录会话识别身份与数据目录（治理/安装/更新均落在调用者自己的目录，
   已有宿主身份集成与按用户目录的 E2E 覆盖）；`ST_GIT_IMPROVE_USER` 指定降级/单用户模式的数据目录。
-- SSH 桥（isomorphic-git 原生不支持 SSH）为二期；当前粘贴 SSH 地址时请改用 https+token。
+- SSH/file 桥（0.8.3 已落地）：`git@host:path`（scp 语法）、`ssh://`、`file://`、`git://` 地址在**服务端插件**的安装/更新/诊断中自动走系统 git（凭据用你自己的 ssh-agent/askpass，不经过凭据存储；无系统 git 时明确报错）。纯前端模式仍不支持 SSH（浏览器无此能力），请改用 https+token。
 - Gitee 无设备码流程；账号密码换 token 依赖应用注册，MVP 仅 PAT/userinfo。
 - 本插件自身的更新走宿主原生插件更新（公开仓库），不依赖本插件。
 - **纯前端模式的网络约束**：GitHub/GitLab 的 git 端点不发 CORS 头，浏览器内克隆会失败——
