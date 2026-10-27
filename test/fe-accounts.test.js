@@ -98,3 +98,21 @@ test('PAT 为空与缺站点地址被拒绝', async () => {
     await assert.rejects(() => store.addAccount({ type: 'gitea', token: 'x' }), /站点地址/);
     await assert.rejects(() => store.addAccount({ type: 'nope', token: 'x' }), /未知站点类型/);
 });
+
+test('安装来源登记：recordInstall/getInstalls 往返与覆盖', async () => {
+    const store = await freshStore();
+    await store.recordInstall('ST-Switcher', { url: 'https://github.com/jiozhaoyue/ST-Switcher.git', branch: '', target: 'extension', oid: 'abc1234' });
+    await store.recordInstall('另一个', { url: 'https://git.example.com/a/b.git', branch: 'dev', target: 'global', oid: '' });
+    const installs = store.getInstalls();
+    assert.equal(installs['ST-Switcher'].url, 'https://github.com/jiozhaoyue/ST-Switcher.git');
+    assert.equal(installs['另一个'].branch, 'dev');
+    assert.ok(Number.isFinite(installs['ST-Switcher'].installedAt));
+    // 重新登记覆盖
+    await store.recordInstall('ST-Switcher', { url: 'https://github.com/jiozhaoyue/ST-Switcher.git', branch: 'main', target: 'extension', oid: 'def5678' });
+    assert.equal(store.getInstalls()['ST-Switcher'].oid, 'def5678');
+    // 持久化往返
+    const storage2 = { name: 'x', async load() { return store.snapshot(); }, async save() { return true; } };
+    const store2 = createStoreForTesting(storage2);
+    await store2.load();
+    assert.equal(store2.getInstalls()['ST-Switcher'].branch, 'main');
+});

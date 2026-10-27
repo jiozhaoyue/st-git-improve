@@ -132,7 +132,9 @@ export function mergeStates(a, b) {
     for (const [siteKey, id] of Object.entries({ ...(a.defaults || {}), ...(b.defaults || {}) })) {
         if (ids.has(id)) defaults[siteKey] = id;
     }
-    return { version: 1, accounts, defaults };
+    // installs：按扩展名合并（主通道优先，次通道补缺）
+    const installs = { ...(b && typeof b.installs === 'object' ? b.installs : {}), ...(a && typeof a.installs === 'object' ? a.installs : {}) };
+    return { version: 1, accounts, defaults, installs };
 }
 
 /** 按环境可用性挑选存储适配器（多通道：第一可用者）。 */

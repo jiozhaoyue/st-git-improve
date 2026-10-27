@@ -4,7 +4,7 @@
 // 额外能力：克隆结果可导出为 zip（buildZipBytes），供本地备份/手动上传。
 
 // 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
-const V = '0.7.6';
+const V = '0.7.7';
 
 const { parseRepoUrl } = await import(`./sites.js?v=${V}`);
 const { cloneToMemory } = await import(`./gitbrowser.js?v=${V}`);
@@ -140,6 +140,10 @@ export async function pureInstall({ url, branch, target = 'extension', accounts,
         throw new Error(`宿主安装失败: ${detail}`);
     }
     log('安装完成，刷新页面后生效');
+    // 来源登记：诊断页据此提供「更新」（以登记的 url/branch 重跑本流程）
+    try {
+        await accounts.recordInstall(name, { url, branch: branch || '', target, oid: cloned?.oid || '' });
+    } catch { /* 登记失败不影响安装结果 */ }
     return { name, oid: cloned?.oid || '', mode: 'host-native', note: result.data?.message || '', cloned };
 }
 

@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.7.6';
+const V = '0.7.7';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -142,12 +142,15 @@ function tabAccounts(root) {
             rows.innerHTML = '<tr><td colspan="6">还没有账号 —— 在上方添加第一个</td></tr>';
             return;
         }
-        for (const account of snapshot.accounts) {
-            const siteKey = siteKeyOf(account.type, account.baseUrl);
-            const isDefault = snapshot.defaults[siteKey] === account.id;
-            const siteLabel = `${account.type}${SITE_TYPES.find(t => t.id === account.type)?.needsBase ? ` · ${account.baseUrl}` : ''}`;
-            const row = el(`<tr>
-                <td>${esc(account.note || account.username || '(匿名)')}<div class="stgi-note">${esc(account.username || '')}</div></td>
+            for (const account of snapshot.accounts) {
+                const siteKey = siteKeyOf(account.type, account.baseUrl);
+                const isDefault = snapshot.defaults[siteKey] === account.id;
+                const siteLabel = `${account.type}${SITE_TYPES.find(t => t.id === account.type)?.needsBase ? ` · ${account.baseUrl}` : ''}`;
+                const checkedNote = account.lastCheckedAt
+                    ? new Date(account.lastCheckedAt * 1000).toLocaleString('zh-CN', { hour12: false })
+                    : '';
+                const row = el(`<tr>
+                <td>${esc(account.note || account.username || '(匿名)')}<div class="stgi-note">${esc(account.username || '')}${checkedNote ? ` · 验证于 ${esc(checkedNote)}` : ''}</div></td>
                 <td>${esc(siteLabel)}</td>
                 <td>${esc(account.method || 'pat')}</td>
                 <td>${statusBadge(account)}</td>
@@ -610,40 +613,69 @@ async function tabDiagnose(root) {
     return section;
 }
 
-/** 纯前端诊断：宿主原生扩展发现（只读状态总览）。 */
+/** 纯前端诊断：宿主原生扩展发现 + 本面板登记来源的「更新」。 */
 async function tabDiagnosePure(root) {
     const section = el(`
         <div>
-            <div class="stgi-note">纯前端模式：列出宿主已安装的第三方扩展（只读）。更新 / 依赖修复 / 备份恢复 / 去重需要服务端插件（可选增强）。</div>
+            <div class="stgi-note">纯前端模式：列出宿主已装第三方扩展。本面板安装的扩展登记了来源，可直接「更新」（重跑安装流程取最新版）；依赖修复 / 备份恢复 / 去重需要服务端插件（可选增强）。</div>
             <div class="stgi-row">
                 <button class="stgi-btn" data-role="reload">扫描已装扩展</button>
             </div>
             <table class="stgi-table"><thead>
-                <tr><th>名称</th><th>显示名</th><th>版本</th></tr>
+                <tr><th>名称</th><th>显示名</th><th>版本</th><th>操作</th></tr>
             </thead><tbody data-role="rows"></tbody></table>
         </div>`);
     const q = role => section.querySelector(`[data-role="${role}"]`);
+
+    async function runUpdate(origin, displayName) {
+        const logBox = el('<div class="stgi-log" style="display:block"></div>');
+        const overlay = openDialog(`更新 — ${esc(displayName || origin.url)}`, logBox);
+        const append = line => { logBox.textContent += `${line}\n`; logBox.scrollTop = logBox.scrollHeight; };
+        try {
+            await pureInstall({
+                url: origin.url,
+                branch: origin.branch || undefined,
+                target: origin.target || 'extension',
+                accounts: RT.store,
+                onLog: append,
+            });
+            append('完成。刷新页面后生效。');
+            toast(`已更新 ${displayName || origin.url}`, 'success');
+        } catch (error) {
+            append(`失败: ${error.message || error}`);
+            toast(String(error.message || error), 'error');
+        }
+        return overlay;
+    }
+
     async function reload() {
         const rows = q('rows');
-        rows.innerHTML = '<tr><td colspan="3">扫描中…</td></tr>';
+        rows.innerHTML = '<tr><td colspan="4">扫描中…</td></tr>';
         try {
-            const { status, ok, entries } = await hostDiscover();
+            const [{ status, ok, entries }, installs] = await Promise.all([hostDiscover(), Promise.resolve(RT.store.getInstalls())]);
             if (!ok) throw new Error(`宿主 discover 失败（HTTP ${status}）`);
             rows.innerHTML = '';
             if (entries.length === 0) {
-                rows.innerHTML = '<tr><td colspan="3">未发现任何第三方扩展</td></tr>';
+                rows.innerHTML = '<tr><td colspan="4">未发现任何第三方扩展</td></tr>';
                 return;
             }
             for (const entry of entries) {
+                const origin = installs[entry.name];
+                const originNote = origin ? `<div class="stgi-note">来源: ${esc(origin.url)}${origin.branch ? ` @${esc(origin.branch)}` : ''}</div>` : '';
                 const row = el(`<tr>
-                    <td>${esc(entry.name || '')}</td>
+                    <td>${esc(entry.name || '')}${originNote}</td>
                     <td>${esc(entry.displayName || '')}</td>
                     <td>${esc(entry.version || '')}</td>
+                    <td>${origin ? '<button class="stgi-btn" data-act="update">更新</button>' : '—'}</td>
                 </tr>`);
+                row.querySelector('[data-act="update"]')?.addEventListener('click', event => {
+                    event.target.disabled = true;
+                    runUpdate(origin, entry.name).finally(() => { reload(); });
+                });
                 rows.append(row);
             }
         } catch (error) {
-            rows.innerHTML = `<tr><td colspan="3">扫描失败: ${esc(String(error.message || error))}</td></tr>`;
+            rows.innerHTML = `<tr><td colspan="4">扫描失败: ${esc(String(error.message || error))}</td></tr>`;
         }
     }
     q('reload').addEventListener('click', reload);

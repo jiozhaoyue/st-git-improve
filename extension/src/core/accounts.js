@@ -3,7 +3,7 @@
 // 纯逻辑、无 DOM 依赖 —— 存储适配器由外部注入，可直接单测。
 
 // 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
-const V = '0.7.6';
+const V = '0.7.7';
 
 const { getAdapter, parseRepoUrl, siteKeyOf, extractUserinfo, defaultBaseUrl, normalizeBaseUrl } =
     await import(`./sites.js?v=${V}`);
@@ -21,6 +21,7 @@ function emptyState() {
         version: 1,
         accounts: [],       // { id, type, baseUrl, username, token, method, note, createdAt, lastCheckedAt, lastCheckOk, lastLogin }
         defaults: {},       // siteKey → accountId
+        installs: {},       // 扩展名 → { url, branch, target, installedAt, oid }（纯前端安装来源登记）
     };
 }
 
@@ -42,6 +43,7 @@ export class AccountStore {
                 version: 1,
                 accounts: persisted.accounts,
                 defaults: persisted.defaults && typeof persisted.defaults === 'object' ? persisted.defaults : {},
+                installs: persisted.installs && typeof persisted.installs === 'object' ? persisted.installs : {},
             };
         } else {
             this.state = emptyState();
@@ -59,7 +61,27 @@ export class AccountStore {
         return {
             accounts: this.state.accounts.map(a => ({ ...a })),
             defaults: { ...this.state.defaults },
+            installs: { ...this.state.installs },
         };
+    }
+
+    /** 登记纯前端安装来源（诊断页据此提供「更新」）。 */
+    async recordInstall(name, { url, branch, target, oid }) {
+        this.state.installs = this.state.installs || {};
+        this.state.installs[String(name)] = {
+            url: String(url || ''),
+            branch: branch || '',
+            target: target || 'extension',
+            oid: oid || '',
+            installedAt: nowSec(),
+        };
+        await this.save();
+        return this.snapshot();
+    }
+
+    /** 纯前端安装来源表。 */
+    getInstalls() {
+        return { ...(this.state.installs || {}) };
     }
 
     /** 站点下的全部账号（siteKey = type:baseUrl）。 */
@@ -163,7 +185,8 @@ export class AccountStore {
         return { ...removed };
     }
 
-    /** 验证凭据（浏览器直连站点 API）。返回 { ok, login, status } 或抛 blockedByBrowser。 */
+    /** 验证凭据（浏览器直连站点 API）。返回 { ok, login, status } 或抛 blockedByBrowser。
+     * 验证成功且账号没有用户名时，自动回填站点返回的 login。 */
     async testAccount(accountId) {
         const account = this.findAccount(accountId);
         if (!account) throw new Error('账号不存在');
@@ -172,6 +195,9 @@ export class AccountStore {
         account.lastCheckedAt = nowSec();
         account.lastCheckOk = result.ok === true;
         account.lastLogin = result.login || account.username || '';
+        if (result.ok && !account.username && result.login) {
+            account.username = result.login;
+        }
         await this.save();
         return result;
     }
