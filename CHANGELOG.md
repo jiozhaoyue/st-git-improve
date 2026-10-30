@@ -2,6 +2,15 @@
 
 所有显著变更记录在本文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.9] - 2026-10-31
+
+### 改进 / 测试
+
+- 面板 tab 渲染加错误边界：某页签渲染抛错时显示可读错误行，不再卡死在「加载中…」。
+- 账号「测试」按钮防双击（验证期间禁用，异常路径恢复）。
+- 路由级测试补 `/health`（panelVersions/systemGit 契约）；抽出共享助手
+  `test/helpers/route-app.mjs`（branches/health 测试共用最小上下文挂载）。
+
 ## [0.8.8] - 2026-10-31
 
 ### 新增 / 修复

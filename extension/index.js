@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.8';
+const V = '0.8.9';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -260,7 +260,10 @@ function tabAccounts(root) {
                     toast(String(error.message || error), 'error');
                 }
             });
-            row.querySelector('[data-act="test"]').addEventListener('click', async () => {
+            row.querySelector('[data-act="test"]').addEventListener('click', async event => {
+                const button = event.target;
+                if (button.disabled) return;
+                button.disabled = true;
                 toast('验证中…');
                 try {
                     const result = await RT.store.testAccount(account.id);
@@ -274,6 +277,7 @@ function tabAccounts(root) {
                         reload();
                     } else {
                         toast(String(error.message || error), 'error');
+                        button.disabled = false;
                     }
                 }
             });
@@ -1481,10 +1485,15 @@ async function openMain() {
         bar.querySelectorAll('.stgi-tab').forEach((tab, i) => tab.classList.toggle('active', i === index));
         body.innerHTML = '<div class="stgi-note">加载中…</div>';
         // Tab factories may return the section element synchronously or a
-        // Promise — normalize so both work.
+        // Promise — normalize so both work; render errors replace the
+        // placeholder instead of leaving the tab stuck on 加载中.
         Promise.resolve(tabs[index][1]()).then(section => {
             body.innerHTML = '';
             body.append(section);
+        }).catch(error => {
+            console.error('[st-git-improve] tab render failed:', error);
+            body.innerHTML = '';
+            body.append(el(`<div class="stgi-note">页面渲染失败: ${esc(String(error?.message || error))}——可切到其他页签后重试，或刷新页面。</div>`));
         });
     }
     tabs.forEach(([label], index) => {

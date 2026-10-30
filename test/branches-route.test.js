@@ -6,9 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import express from 'express';
 
-import { createRouter } from '../plugin/routes.js';
+import { startRouteApp } from './helpers/route-app.mjs';
 
 const GIT_ARGS = ['-c', 'user.name=test', '-c', 'user.email=test@example.com'];
 
@@ -18,7 +17,7 @@ function g(args, cwd) {
 
 describe('GET /branches (route level)', () => {
     let fixture;
-    let server;
+    let app;
     let baseUrl;
 
     beforeEach(async () => {
@@ -34,28 +33,12 @@ describe('GET /branches (route level)', () => {
         g(['clone', '--bare', fixture.source, fixture.bare]);
         g(['symbolic-ref', 'HEAD', 'refs/heads/main'], fixture.bare);
 
-        const app = express();
-        app.use('/api/plugins/st-git-improve', createRouter({
-            dirs: {
-                localExtensionsDir: path.join(fixture.root, 'ext'),
-                globalExtensionsDir: path.join(fixture.root, 'global'),
-                pluginsDir: path.join(fixture.root, 'plugins'),
-                selfPluginDir: path.join(fixture.root, 'self'),
-            },
-            selfPluginDir: path.join(fixture.root, 'self'),
-            tavernRoot: fixture.root,
-            store: { authResolverForUrl: () => undefined },
-            identity: { mode: 'fallback' },
-            panelVersions: { bundled: '', installed: '' },
-        }));
-        await new Promise(resolve => {
-            server = app.listen(0, '127.0.0.1', resolve);
-        });
-        baseUrl = `http://127.0.0.1:${server.address().port}/api/plugins/st-git-improve`;
+        app = await startRouteApp(fixture.root);
+        baseUrl = app.baseUrl;
     });
 
     afterEach(() => new Promise(resolve => {
-        server.close(() => resolve());
+        app.close(() => resolve());
         setTimeout(() => {
             try { fs.rmSync(fixture.root, { recursive: true, force: true, maxRetries: 3 }); } catch { /* 忽略 */ }
             resolve();
