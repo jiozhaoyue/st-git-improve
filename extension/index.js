@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.9';
+const V = '0.8.10';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -1249,6 +1249,10 @@ function tabBackups(entry) {
                     </td>
                 </tr>`);
                 row.querySelector('[data-act="recover"]').addEventListener('click', async event => {
+                    const shortRef = backup.ref.replace('refs/git-improve/backup/', '');
+                    if (!window.confirm(`恢复备份 ${shortRef} 会把工作区回滚到该备份点——备份之后的本地改动将被覆盖。继续？`)) {
+                        return;
+                    }
                     event.target.disabled = true;
                     try {
                         await api('/recover', { body: { target: entry.target, name: entry.name, backupRef: backup.ref } });
