@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.9.0';
+const V = '0.9.1';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -979,6 +979,7 @@ function tabGovernance(root) {
                 <button class="stgi-btn" data-role="reload">刷新</button>
                 <button class="stgi-btn" data-role="disableAll">一键停用全部自装扩展</button>
                 <button class="stgi-btn" data-role="enableAll">全部启用</button>
+                <button class="stgi-btn" data-role="purgeClean">清理无改动停用项</button>
                 <button class="stgi-btn" data-role="ledger">查看台账</button>
                 <span class="stgi-note" data-role="totals"></span>
             </div>
@@ -1021,11 +1022,41 @@ function tabGovernance(root) {
         }
     });
 
+    let lastEntries = [];
+
+    // 批量清理「无本地改动」的停用副本：单次总确认 + 逐项走同一确认端点
+    q('purgeClean').addEventListener('click', async () => {
+        const candidates = (lastEntries || []).filter(e => e.scope === 'parked' && !(e.dirtyCount > 0));
+        if (candidates.length === 0) {
+            toast('没有可清理的停用副本（仅清理无本地改动的）', 'error');
+            return;
+        }
+        const totalBytes = candidates.reduce((sum, e) => sum + (Number(e.bytes) || 0), 0);
+        const list = candidates.map(e => `- ${e.name}（${humanBytes(Number(e.bytes) || 0)}）`).join('\n');
+        if (!window.confirm(`将彻底清理 ${candidates.length} 个无本地改动的停用副本（共约 ${humanBytes(totalBytes)}，不可恢复）：\n\n${list}\n\n继续？`)) {
+            return;
+        }
+        let freed = 0;
+        const failed = [];
+        for (const entry of candidates) {
+            try {
+                const result = await api('/governance/parked', { method: 'DELETE', body: { name: entry.name, confirm: true } });
+                freed += Number(result.freedBytes) || 0;
+            } catch (error) {
+                failed.push(`${entry.name}（${error.message || error}）`);
+            }
+        }
+        toast(`清理完成：释放 ${humanBytes(freed)}${failed.length ? `，失败 ${failed.length}：${failed.join('、')}` : ''}`,
+            failed.length ? 'error' : 'success');
+        reload();
+    });
+
     async function reload() {
         const rows = q('rows');
         rows.innerHTML = '<tr><td colspan="6">扫描中…</td></tr>';
         try {
             const { entries, totals, parkedDir } = await api('/governance');
+            lastEntries = entries;
             q('totals').textContent =
                 `本地扩展共 ${humanBytes(totals.localBytes)}；停用区共 ${humanBytes(totals.parkedBytes)}` +
                 (totals.parkedBytes > 0 ? `（彻底清理停用副本可释放 ${humanBytes(totals.parkedBytes)}）` : '');
