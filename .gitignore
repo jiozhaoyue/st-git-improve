@@ -8,6 +8,7 @@ tmp/
 out/
 .history/
 .trellis/.runtime/
+test-results/
 
 # 本地备份
 *.bak*
