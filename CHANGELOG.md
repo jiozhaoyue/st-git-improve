@@ -2,6 +2,19 @@
 
 所有显著变更记录在本文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.5] - 2026-10-31
+
+### 新增（面板自更新检查）
+
+- 设置页新增「面板更新」区（双模式通用）：读自身 manifest 的 `homePage` 解析 origin 仓库，
+  经 `api.github.com` contents API 拉取最新 `extension/manifest.json`（公开仓无需凭据，
+  有 CORS），与当前版本对比显示「已是最新 / 有新版本 + 打开发布页」。
+- 纯逻辑模块 `extension/src/core/selfupdate.js`（origin 解析 / base64→UTF-8 / 版本比较 /
+  检查流程，fetch 可注入），测试 +10。
+- 修正 manifest `homePage` 指向真实仓库 `jiozhaoyue/st-git-improve`（原为占位形态，
+  会让自更新检查指向不存在的仓库）。
+- 运维：`test-results/`（UI 截图产物，含实例聊天背景）入 `.gitignore`。
+
 ## [0.8.4] - 2026-10-31
 
 ### 新增（通道可视化与环境诊断）

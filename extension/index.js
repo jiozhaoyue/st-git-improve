@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.4';
+const V = '0.8.5';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -23,6 +23,7 @@ const { getSharedStore } = await import(`./src/core/accounts.js?v=${V}`);
 const { SITE_TYPES, siteKeyOf } = await import(`./src/core/sites.js?v=${V}`);
 const { pureInstall, buildZipBytes } = await import(`./src/core/installflow.js?v=${V}`);
 const { channelHint, classifyUrl } = await import(`./src/core/giturl.js?v=${V}`);
+const { originRepoFromHome, checkSelfUpdate } = await import(`./src/core/selfupdate.js?v=${V}`);
 
 function toast(msg, kind = 'info') {
     const toastr = window.toastr;
@@ -90,6 +91,46 @@ function appendLogLine(log, line, kind = 'plain') {
 function panelVersionLag() {
     const bundled = RT.panelVersions?.bundled || '';
     return Boolean(bundled && V && compareVersions(bundled, V) < 0);
+}
+
+/** 构建「面板更新」区（双模式通用）：读自身 manifest.homePage → origin 最新版本对比。 */
+function buildSelfUpdateSection() {
+    const box = el(`<div class="stgi-section">
+        <div class="stgi-note"><b>面板更新</b>：对比 origin 仓库发布的最新 manifest 版本（api.github.com，无需凭据）。</div>
+        <div class="stgi-row">
+            <span class="stgi-note" data-role="selfState">当前 v${esc(V)}</span>
+            <button class="stgi-btn" data-role="selfCheck">检查更新</button>
+        </div>
+    </div>`);
+    box.querySelector('[data-role="selfCheck"]').addEventListener('click', async event => {
+        const button = event.target;
+        button.disabled = true;
+        const state = box.querySelector('[data-role="selfState"]');
+        state.textContent = '检查中…';
+        try {
+            const manifest = await (await fetch(new URL('./manifest.json', import.meta.url).href)).json();
+            const repo = originRepoFromHome(manifest?.homePage);
+            const result = await checkSelfUpdate({ currentVersion: V, repo });
+            if (!result.ok) {
+                state.textContent = `检查失败：${result.note}`;
+                state.classList.add('stgi-hint-err');
+            } else if (result.upToDate) {
+                state.textContent = `已是最新（origin v${esc(result.latest)}）`;
+                state.classList.add('stgi-hint-ok');
+            } else {
+                state.textContent = `有新版本：origin v${esc(result.latest)}（当前 v${esc(V)}）`;
+                state.classList.add('stgi-hint-warn');
+                const link = el(`<a class="stgi-btn" href="${esc(result.url)}" target="_blank" rel="noopener noreferrer">打开发布页</a>`);
+                state.parentElement.append(link);
+            }
+        } catch (error) {
+            state.textContent = `检查失败：${error.message || error}`;
+            state.classList.add('stgi-hint-err');
+        } finally {
+            button.disabled = false;
+        }
+    });
+    return box;
 }
 
 /** 构建「运行环境」卡（服务端 / 纯前端两态共用；kv 行由调用方填充）。 */
@@ -1251,10 +1292,12 @@ async function tabSettings(root) {
             }
         });
         appendPanelVersionGuard(section);
+        section.append(buildSelfUpdateSection());
         return section;
     }
 
     appendPanelVersionGuard(section);
+    section.append(buildSelfUpdateSection());
 
     const q = role => section.querySelector(`[data-role="${role}"]`);
     const radios = section.querySelectorAll('input[name="stgiProxy"]');
