@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.9.1';
+const V = '0.9.2';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -946,7 +946,10 @@ async function tabDiagnosePure(root) {
             }
             for (const entry of entries) {
                 const origin = installs[entry.name];
-                const originNote = origin ? `<div class="stgi-note">来源: ${esc(origin.url)}${origin.branch ? ` @${esc(origin.branch)}` : ''}</div>` : '';
+                const installedAt = origin?.installedAt
+                    ? ` · 装于 ${new Date(Number(origin.installedAt) * 1000).toLocaleString('zh-CN', { hour12: false })}`
+                    : '';
+                const originNote = origin ? `<div class="stgi-note">来源: ${esc(origin.url)}${origin.branch ? ` @${esc(origin.branch)}` : ''}${installedAt}</div>` : '';
                 const row = el(`<tr>
                     <td>${esc(entry.name || '')}${originNote}</td>
                     <td>${esc(entry.displayName || '')}</td>
