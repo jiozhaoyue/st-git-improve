@@ -1374,9 +1374,13 @@ async function openMain() {
     });
     show(0);
     const modeBadge = RT.mode === 'server'
-        ? '<span class="stgi-badge good">服务端增强</span>'
-        : '<span class="stgi-badge warn">纯前端</span>';
-    openDialog(`Git 源管理（补充面板） ${modeBadge}`, root);
+        ? { cls: 'good', label: '服务端增强' }
+        : { cls: 'warn', label: '纯前端' };
+    const overlay = openDialog('Git 源管理（补充面板）', root);
+    // 徽标走 DOM 节点插入（openDialog 会对标题做 esc，不能内联 HTML）
+    overlay.querySelector('h3').append(el(` <span class="stgi-badge ${modeBadge.cls}"></span>`));
+    overlay.querySelector('h3 .stgi-badge').textContent = modeBadge.label;
+    return overlay;
 }
 
 // ---------------------------------------------------------------- entry
