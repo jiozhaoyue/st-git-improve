@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.5';
+const V = '0.8.6';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -85,6 +85,13 @@ function appendLogLine(log, line, kind = 'plain') {
     row.textContent = String(line ?? '');
     log.append(row);
     log.scrollTop = log.scrollHeight;
+}
+
+/** 在日志区追加「刷新页面」按钮（安装/更新完成后面板文件已落盘，刷新即生效）。 */
+function appendRefreshButton(log) {
+    const button = el('<button class="stgi-btn" title="重载宿主页面，让新装/更新的扩展立即生效">刷新页面（立即生效）</button>');
+    button.addEventListener('click', () => location.reload());
+    log.append(el('<div></div>'), button);
 }
 
 /** 面板版本是否落后于当前面板（插件内置副本回退风险）。 */
@@ -189,6 +196,7 @@ function tabAccounts(root) {
                 <button class="stgi-btn" data-role="import">导入账号</button>
                 ${RT.mode === 'server' ? '<span class="stgi-note">「推送服务端」把账号同步给服务端插件（其克隆/治理用它认证）</span>' : ''}
             </div>
+            <div class="stgi-note" data-role="summary"></div>
             <table class="stgi-table"><thead>
                 <tr><th>账号</th><th>站点</th><th>方式</th><th>状态</th><th>默认</th><th>操作</th></tr>
             </thead><tbody data-role="rows"></tbody></table>
@@ -215,6 +223,9 @@ function tabAccounts(root) {
     async function reload() {
         const snapshot = RT.store.snapshot();
         const rows = q('rows');
+        q('summary').textContent = snapshot.accounts.length
+            ? `共 ${snapshot.accounts.length} 个账号 · ${new Set(snapshot.accounts.map(a => siteKeyOf(a.type, a.baseUrl))).size} 个站点`
+            : '';
         rows.innerHTML = '';
         if (snapshot.accounts.length === 0) {
             rows.innerHTML = '<tr><td colspan="6">还没有账号 —— 在上方添加第一个</td></tr>';
@@ -281,6 +292,10 @@ function tabAccounts(root) {
                 }
             });
             row.querySelector('[data-act="del"]').addEventListener('click', async () => {
+                const label = account.note || account.username || '(匿名)';
+                if (!window.confirm(`删除账号「${label}」？该站点的凭据将从浏览器存储中移除（不影响仓库与扩展）。`)) {
+                    return;
+                }
                 try {
                     await RT.store.removeAccount(account.id);
                     toast('已删除', 'success');
@@ -469,6 +484,7 @@ async function tabInstall(root) {
                 });
                 append(`安装完成: ${result.name}`, 'ok');
                 append(`提交: ${(result.oid || '').slice(0, 7)}`);
+                appendRefreshButton(log);
                 toast('安装完成，刷新页面后生效', 'success');
             } else {
                 const result = await pureInstall({
@@ -490,6 +506,7 @@ async function tabInstall(root) {
                         setTimeout(() => URL.revokeObjectURL(href), 60000);
                     } catch { /* 导出失败不影响安装结果 */ }
                 }
+                appendRefreshButton(log);
                 toast('安装完成，刷新页面后生效', 'success');
             }
         } catch (error) {
@@ -799,7 +816,7 @@ async function tabDiagnosePure(root) {
         }
         const logBox = el('<div class="stgi-log" style="display:block"></div>');
         openDialog('全部更新（纯前端 · 顺序执行）', logBox);
-        const append = line => { logBox.textContent += `${line}\n`; logBox.scrollTop = logBox.scrollHeight; };
+        const append = (line, kind = 'plain') => appendLogLine(logBox, line, kind);
         append(`共 ${installs.length} 个待更新扩展`);
         let okCount = 0;
         const failed = [];
@@ -812,15 +829,16 @@ async function tabDiagnosePure(root) {
                     target: origin.target || 'extension',
                     replace: true,
                     accounts: RT.store,
-                    onLog: append,
+                    onLog: line => append(line),
                 });
                 okCount += 1;
             } catch (error) {
                 failed.push(name);
-                append(`失败: ${error.message || error}`);
+                append(`失败: ${error.message || error}`, 'err');
             }
         }
-        append(`完成：成功 ${okCount}，失败 ${failed.length}${failed.length ? `（${failed.join('、')}）` : ''}。刷新页面后生效。`);
+        append(`完成：成功 ${okCount}，失败 ${failed.length}${failed.length ? `（${failed.join('、')}）` : ''}。刷新页面后生效。`, failed.length ? 'err' : 'ok');
+        appendRefreshButton(logBox);
         toast(`全部更新完成：成功 ${okCount}，失败 ${failed.length}`, failed.length > 0 ? 'error' : 'success');
         reload();
         button.disabled = false;
@@ -833,7 +851,7 @@ async function tabDiagnosePure(root) {
         }
         const logBox = el('<div class="stgi-log" style="display:block"></div>');
         const overlay = openDialog(`更新 — ${esc(displayName || origin.url)}`, logBox);
-        const append = line => { logBox.textContent += `${line}\n`; logBox.scrollTop = logBox.scrollHeight; };
+        const append = (line, kind = 'plain') => appendLogLine(logBox, line, kind);
         try {
             await pureInstall({
                 url: origin.url,
@@ -841,12 +859,13 @@ async function tabDiagnosePure(root) {
                 target: origin.target || 'extension',
                 replace: true,
                 accounts: RT.store,
-                onLog: append,
+                onLog: line => append(line),
             });
-            append('完成。刷新页面后生效。');
+            append('完成。刷新页面后生效。', 'ok');
+            appendRefreshButton(logBox);
             toast(`已更新 ${displayName || origin.url}`, 'success');
         } catch (error) {
-            append(`失败: ${error.message || error}`);
+            append(`失败: ${error.message || error}`, 'err');
             toast(String(error.message || error), 'error');
         }
         return overlay;
