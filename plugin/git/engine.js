@@ -39,25 +39,42 @@ export function isSystemGitUrl(url) {
     return /^[^@/]+@[^:/]+:.+$/.test(raw) && !/^https?:\/\//i.test(raw);
 }
 
-let systemGitAvailableCache;
+let systemGitProbeCache;
+/**
+ * 系统 git 探测（结果缓存）：可用性 + 版本字符串（如 "git version 2.45.0"）。
+ * @returns {{ available: boolean, version: string }}
+ */
+function probeSystemGit() {
+    if (systemGitProbeCache === undefined) {
+        try {
+            const { status, stdout } = spawnSync('git', ['--version'], {
+                encoding: 'utf8',
+                windowsHide: true,
+                env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+            });
+            const version = status === 0 ? String(stdout || '').trim() : '';
+            systemGitProbeCache = { available: status === 0, version };
+        } catch {
+            systemGitProbeCache = { available: false, version: '' };
+        }
+    }
+    return systemGitProbeCache;
+}
+
 /**
  * 系统 git 是否可用（结果缓存）。
  * @returns {boolean}
  */
 export function systemGitAvailable() {
-    if (systemGitAvailableCache === undefined) {
-        try {
-            const { status } = spawnSync('git', ['--version'], {
-                encoding: 'utf8',
-                windowsHide: true,
-                env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-            });
-            systemGitAvailableCache = status === 0;
-        } catch {
-            systemGitAvailableCache = false;
-        }
-    }
-    return systemGitAvailableCache;
+    return probeSystemGit().available;
+}
+
+/**
+ * 系统 git 版本字符串（不可用时为空串；结果缓存）。
+ * @returns {string}
+ */
+export function systemGitVersion() {
+    return probeSystemGit().version;
 }
 
 /**

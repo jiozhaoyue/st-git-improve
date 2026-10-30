@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.3';
+const V = '0.8.4';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -22,6 +22,7 @@ const hostMoveExtension = backendMod.hostMoveExtension;
 const { getSharedStore } = await import(`./src/core/accounts.js?v=${V}`);
 const { SITE_TYPES, siteKeyOf } = await import(`./src/core/sites.js?v=${V}`);
 const { pureInstall, buildZipBytes } = await import(`./src/core/installflow.js?v=${V}`);
+const { channelHint, classifyUrl } = await import(`./src/core/giturl.js?v=${V}`);
 
 function toast(msg, kind = 'info') {
     const toastr = window.toastr;
@@ -50,6 +51,7 @@ const esc = value => String(value ?? '')
 const RT = {
     mode: 'pure',
     store: null,
+    systemGit: null,
 };
 
 function humanBytes(n) {
@@ -74,6 +76,39 @@ async function getWhoami() {
         }
     }
     return whoamiCache;
+}
+
+/** 操作日志逐行着色（ok=绿 / err=红 / 默认普通）。 */
+function appendLogLine(log, line, kind = 'plain') {
+    const row = el(`<div class="stgi-log-line${kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : ''}"></div>`);
+    row.textContent = String(line ?? '');
+    log.append(row);
+    log.scrollTop = log.scrollHeight;
+}
+
+/** 面板版本是否落后于当前面板（插件内置副本回退风险）。 */
+function panelVersionLag() {
+    const bundled = RT.panelVersions?.bundled || '';
+    return Boolean(bundled && V && compareVersions(bundled, V) < 0);
+}
+
+/** 构建「运行环境」卡（服务端 / 纯前端两态共用；kv 行由调用方填充）。 */
+function buildEnvCard() {
+    const card = el(`<div class="stgi-section" data-role="envCard">
+        <div class="stgi-note"><b>运行环境</b> <span class="stgi-note" data-role="envStamp"></span></div>
+        <div class="stgi-kv" data-role="envRows"></div>
+        <div class="stgi-row"><button class="stgi-btn" data-role="envRefresh">刷新环境</button></div>
+    </div>`);
+    return card;
+}
+
+/** 往环境卡里填一行 kv。kind: good/bad/warn 控制值着色。 */
+function addEnvRow(card, key, value, kind = '') {
+    const rows = card.querySelector('[data-role="envRows"]');
+    const row = el(`<div class="stgi-kv-row"><span class="stgi-kv-k"></span><span class="stgi-kv-v${kind ? ` ${kind}` : ''}"></span></div>`);
+    row.querySelector('.stgi-kv-k').textContent = key;
+    row.querySelector('.stgi-kv-v').textContent = String(value ?? '');
+    rows.append(row);
 }
 
 // ---------------------------------------------------------------- tabs
@@ -313,6 +348,7 @@ async function tabInstall(root) {
             <div class="stgi-note">${pure
             ? '纯前端模式：浏览器内克隆（支持私有仓库，凭据来自「账号」页），再交给宿主原生安装通道。'
             : '安装私有/任意 git 仓库：http(s)（站点凭据自动认证）或 SSH/file 地址（git@host:path、ssh://、file://，走系统 git 与你自己的 ssh-agent）。前端扩展装到当前用户，服务端插件装到 plugins/。'}</div>
+            <div class="stgi-note" data-role="channelHint" style="display:none"></div>
             <div class="stgi-section">
                 <div class="stgi-row">
                     <input data-role="url" placeholder="仓库地址 https://..." style="flex:3 1 260px" />
@@ -344,16 +380,41 @@ async function tabInstall(root) {
         </div>`);
 
     const q = role => section.querySelector(`[data-role="${role}"]`);
+
+    // 通道可视化：输入地址即时显示将走的克隆通道（含不可用预警）
+    const hint = q('channelHint');
+    function updateChannelHint() {
+        const result = channelHint(q('url').value, {
+            mode: RT.mode,
+            systemGitAvailable: RT.systemGit ? RT.systemGit.available : undefined,
+        });
+        hint.textContent = result.text;
+        hint.style.display = result.text ? '' : 'none';
+        hint.classList.remove('stgi-hint-ok', 'stgi-hint-err', 'stgi-hint-warn');
+        if (result.level === 'ok') hint.classList.add('stgi-hint-ok');
+        else if (result.level === 'error') hint.classList.add('stgi-hint-err');
+        else if (result.level === 'warn') hint.classList.add('stgi-hint-warn');
+    }
+    q('url').addEventListener('input', updateChannelHint);
+
     q('go').addEventListener('click', async () => {
         const button = q('go');
         button.disabled = true;
         const log = q('log');
         log.style.display = '';
-        const append = line => { log.textContent += `${line}\n`; log.scrollTop = log.scrollHeight; };
-        log.textContent = '';
+        const append = (line, kind = 'plain') => appendLogLine(log, line, kind);
+        log.innerHTML = '';
         const url = q('url').value.trim();
         try {
-            if (url) await RT.store.credentialsFor(url); // 预解析站点（错误提前暴露）
+            if (url) {
+                const cls = classifyUrl(url);
+                if (cls.channel === 'system' && RT.mode !== 'server') {
+                    append(`此地址（${cls.label}）需要系统 git 通道，纯前端模式不支持。请改用 http(s) 地址或安装服务端插件。`, 'err');
+                    toast('纯前端模式不支持 SSH/file 地址', 'error');
+                    return;
+                }
+                await RT.store.credentialsFor(url); // 预解析站点（错误提前暴露）
+            }
             if (RT.mode === 'server') {
                 append('服务端插件通道…');
                 const result = await api('/install', {
@@ -365,7 +426,8 @@ async function tabInstall(root) {
                         force: q('force')?.checked,
                     },
                 });
-                log.textContent = `安装完成: ${result.name}\n提交: ${(result.oid || '').slice(0, 7)}`;
+                append(`安装完成: ${result.name}`, 'ok');
+                append(`提交: ${(result.oid || '').slice(0, 7)}`);
                 toast('安装完成，刷新页面后生效', 'success');
             } else {
                 const result = await pureInstall({
@@ -374,9 +436,9 @@ async function tabInstall(root) {
                     target: q('target').value,
                     replace: q('replace')?.checked === true,
                     accounts: RT.store,
-                    onLog: append,
+                    onLog: line => append(line),
                 });
-                append(`完成: ${result.name}（宿主原生通道）`);
+                append(`完成: ${result.name}（宿主原生通道）`, 'ok');
                 // 附加能力：克隆成功时把结果导出为本地 zip（数据备份/手动上传双保险）
                 if (result.cloned) {
                     try {
@@ -390,7 +452,7 @@ async function tabInstall(root) {
                 toast('安装完成，刷新页面后生效', 'success');
             }
         } catch (error) {
-            append(`失败: ${error.message || error}`);
+            append(`失败: ${error.message || error}`, 'err');
             toast(String(error.message || error), 'error');
         } finally {
             button.disabled = false;
@@ -415,6 +477,7 @@ async function tabDiagnose(root) {
     const section = el(`
         <div>
             <div class="stgi-note">扫描已装扩展与服务端插件。更新时本地改动会自动备份；依赖修复可对插件目录或酒馆本体重跑 npm install。</div>
+            <div class="stgi-section" data-role="envSection"></div>
             <div class="stgi-row">
                 <button class="stgi-btn" data-role="reload">扫描（含远端检查）</button>
                 <button class="stgi-btn" data-role="updateAll">全部更新</button>
@@ -443,6 +506,35 @@ async function tabDiagnose(root) {
         </div>`);
 
     const q = role => section.querySelector(`[data-role="${role}"]`);
+
+    // 运行环境卡：面板版本对 + 系统 git 桥 + 代理模式
+    const envCard = buildEnvCard();
+    section.querySelector('[data-role="envSection"]').append(envCard);
+    async function fillEnv() {
+        envCard.querySelector('[data-role="envRows"]').innerHTML = '';
+        envCard.querySelector('[data-role="envStamp"]').textContent = `（${RT.mode === 'server' ? '服务端增强' : '纯前端'} · ${new Date().toLocaleTimeString()}）`;
+        addEnvRow(envCard, '面板版本', `v${V}`, 'good');
+        try {
+            const health = await api('/health');
+            const pv = health.panelVersions || {};
+            const bundled = pv.bundled ? `v${pv.bundled}` : '未知';
+            addEnvRow(envCard, '插件内置面板', bundled, panelVersionLag() ? 'bad' : 'good');
+            if (panelVersionLag()) {
+                addEnvRow(envCard, '⚠ 回退风险', '宿主重启会把面板覆盖回退到内置旧版——请同步 plugins/st-git-improve/extension/', 'warn');
+            }
+            addEnvRow(envCard, '数据目录面板', pv.installed ? `v${pv.installed}` : '未知');
+            const sg = health.systemGit || {};
+            addEnvRow(envCard, '系统 git 桥', sg.available ? (sg.version || '可用') : '不可用（SSH/file 地址将失败）', sg.available ? 'good' : 'bad');
+            try {
+                const { proxy } = await api('/settings');
+                addEnvRow(envCard, 'git 代理', proxy || 'direct');
+            } catch { /* 设置读取失败不阻塞环境卡 */ }
+        } catch (error) {
+            addEnvRow(envCard, '服务端读取失败', String(error.message || error), 'bad');
+        }
+    }
+    envCard.querySelector('[data-role="envRefresh"]').addEventListener('click', () => fillEnv());
+    fillEnv();
 
     async function reload() {
         const rows = q('rows');
@@ -624,6 +716,7 @@ async function tabDiagnosePure(root) {
     const section = el(`
         <div>
             <div class="stgi-note">纯前端模式：列出宿主已装第三方扩展。本面板安装的扩展登记了来源，可直接「更新」（重跑安装流程取最新版）；依赖修复 / 备份恢复 / 去重需要服务端插件（可选增强）。</div>
+            <div class="stgi-section" data-role="envSection"></div>
             <div class="stgi-row">
                 <button class="stgi-btn" data-role="reload">扫描已装扩展</button>
                 <button class="stgi-btn" data-role="updateAll">全部更新（已登记来源的）</button>
@@ -633,6 +726,26 @@ async function tabDiagnosePure(root) {
             </thead><tbody data-role="rows"></tbody></table>
         </div>`);
     const q = role => section.querySelector(`[data-role="${role}"]`);
+
+    // 运行环境卡（纯前端）：浏览器克隆能力 + 宿主原生通道 + 凭据存储
+    const envCard = buildEnvCard();
+    section.querySelector('[data-role="envSection"]').append(envCard);
+    async function fillEnv() {
+        envCard.querySelector('[data-role="envRows"]').innerHTML = '';
+        envCard.querySelector('[data-role="envStamp"]').textContent = `（纯前端 · ${new Date().toLocaleTimeString()}）`;
+        addEnvRow(envCard, '面板版本', `v${V}`, 'good');
+        addEnvRow(envCard, '浏览器克隆', 'isomorphic-git 已载入（http(s) 地址可用）', 'good');
+        addEnvRow(envCard, 'SSH/file 桥', '纯前端不可用（需服务端插件 + 系统 git）', 'warn');
+        addEnvRow(envCard, '凭据存储', RT.store.storage?.name || '浏览器');
+        try {
+            const { status, ok } = await hostDiscover();
+            addEnvRow(envCard, '宿主扩展通道', ok ? `可达（discover HTTP ${status}）` : `异常（HTTP ${status}）`, ok ? 'good' : 'bad');
+        } catch (error) {
+            addEnvRow(envCard, '宿主扩展通道', `不可达：${error.message || error}`, 'bad');
+        }
+    }
+    envCard.querySelector('[data-role="envRefresh"]').addEventListener('click', () => fillEnv());
+    fillEnv();
 
     q('updateAll').addEventListener('click', async event => {
         const button = event.target;
@@ -1050,11 +1163,36 @@ function tabBackups(entry) {
 /** 面板回退守卫：服务端插件内置面板副本落后于当前面板时给出明确警告（第十二节隐患的 UI 化）。 */
 function appendPanelVersionGuard(section) {
     try {
+        if (!V) return;
         const bundled = RT.panelVersions?.bundled || '';
-        if (!bundled || !V) return;
-        if (compareVersions(bundled, V) < 0) {
-            section.prepend(el(`<div class="stgi-section"><div class="stgi-note">⚠️ <b>面板回退风险</b>：服务端插件内置面板副本为 v${esc(bundled)}，落后于当前面板 v${esc(V)}——宿主重启会把面板覆盖回退到旧版。请同步更新实例上的 <b>plugins/st-git-improve/extension/</b> 目录（与 data 内副本一致即可）。</div></div>`));
-        }
+        const installed = RT.panelVersions?.installed || '';
+        const box = el(`<div class="stgi-section">
+            <div class="stgi-note"><b>面板版本</b>：当前 v${esc(V)}${bundled ? ` ｜ 插件内置 v${esc(bundled)}` : ''}${installed ? ` ｜ 数据目录 v${esc(installed)}` : ''}
+              <button class="stgi-btn" data-role="pvCheck" style="margin-left:8px">重新检查</button></div>
+            <div class="stgi-note" data-role="pvResult">${panelVersionLag()
+                ? '⚠️ <b>面板回退风险</b>：插件内置面板副本落后于当前面板——宿主重启会把面板覆盖回退到旧版。请同步更新实例上的 <b>plugins/st-git-improve/extension/</b> 目录（与 data 内副本一致即可）。'
+                : ''}</div>
+        </div>`);
+        box.querySelector('[data-role="pvCheck"]').addEventListener('click', async event => {
+            event.target.disabled = true;
+            try {
+                const detection = await detectMode({ force: true });
+                RT.mode = detection.mode;
+                RT.panelVersions = detection.info?.panelVersions || null;
+                RT.systemGit = detection.info?.systemGit || null;
+                const result = box.querySelector('[data-role="pvResult"]');
+                const b = RT.panelVersions?.bundled || '';
+                result.textContent = panelVersionLag()
+                    ? `内置 v${b} 落后于当前 v${V}——宿主重启会回退面板，请同步插件内置副本`
+                    : (b ? `内置 v${b} 与当前 v${V} 一致，无回退风险` : '服务端插件不在位（纯前端模式），无内置副本');
+                toast('面板版本检查完成', 'success');
+            } catch (error) {
+                toast(String(error.message || error), 'error');
+            } finally {
+                event.target.disabled = false;
+            }
+        });
+        section.prepend(box);
     } catch { /* 守卫失败不影响设置页 */ }
 }
 
@@ -1202,6 +1340,7 @@ async function openMain() {
     const detection = await detectMode();
     RT.mode = detection.mode;
     RT.panelVersions = detection.info?.panelVersions || null;
+    RT.systemGit = detection.info?.systemGit || null;
     if (!RT.store) {
         RT.store = await getSharedStore();
     }
@@ -1212,7 +1351,7 @@ async function openMain() {
         ['私有安装', () => tabInstall(root)],
         ['诊断与修复', () => tabDiagnose(root)],
         ['扩展治理', () => tabGovernance(root)],
-        ['设置', () => tabSettings(root)],
+        [panelVersionLag() ? '设置 ⚠️' : '设置', () => tabSettings(root)],
     ];
     const bar = el('<div class="stgi-tabs"></div>');
     const body = el('<div></div>');

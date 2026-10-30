@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { adapters, deviceFlowStart, deviceFlowPoll, getAdapter, detectTypeForHost, normalizeBaseUrl } from './auth/sites.js';
 import { dirsForRequest, isAdminRequest } from './auth/identity.js';
 import { agentForUrl, effectiveProxyMode, invalidateSettingsCache } from './git/proxy-http.js';
+import { systemGitAvailable, systemGitVersion } from './git/engine.js';
 import { pluginDataDir } from './paths.js';
 import { baseDirFor, installFromUrl } from './ops/install.js';
 import { updateRepo, listBackups, recoverBackup, removeBackup, updateAllRepos } from './ops/update.js';
@@ -103,6 +104,10 @@ export function createRouter(context) {
         ok: true,
         tavernRoot: context.tavernRoot,
         panelVersions: context.panelVersions || { bundled: '', installed: '' },
+        systemGit: {
+            available: systemGitAvailable(),
+            version: systemGitVersion(),
+        },
     })));
 
     // ---------- settings ----------

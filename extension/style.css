@@ -122,6 +122,45 @@
     white-space: pre-wrap;
 }
 
+.stgi-log-line.ok { color: #6bcb77; }
+.stgi-log-line.err { color: #ff6b6b; }
+
+/* 运行环境卡：键值两列表 */
+.stgi-kv {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 4px 0;
+}
+
+.stgi-kv-row {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 0.88em;
+    border-bottom: 1px dashed var(--SmartThemeBorderColor, #333);
+    padding: 3px 2px;
+}
+
+.stgi-kv-k {
+    flex: 0 0 130px;
+    opacity: 0.75;
+}
+
+.stgi-kv-v {
+    flex: 1 1 auto;
+    word-break: break-all;
+}
+
+.stgi-kv-v.good { color: #6bcb77; }
+.stgi-kv-v.bad { color: #ff6b6b; }
+.stgi-kv-v.warn { color: #f4b942; }
+
+/* 安装页通道提示着色 */
+.stgi-hint-ok { color: #6bcb77; }
+.stgi-hint-err { color: #ff6b6b; }
+.stgi-hint-warn { color: #f4b942; }
+
 .stgi-menu-item i {
     margin-right: 4px;
 }

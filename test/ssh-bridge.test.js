@@ -69,6 +69,17 @@ describe('ssh/file bridge (system git channel)', () => {
         assert.equal(engine.isSystemGitUrl('http://localhost/x'), false);
     });
 
+    it('systemGitAvailable 与 systemGitVersion 探测一致（有 git 时版本串非空）', () => {
+        const available = engine.systemGitAvailable();
+        const version = engine.systemGitVersion();
+        assert.equal(typeof version, 'string');
+        if (available) {
+            assert.match(version, /^git version/i);
+        } else {
+            assert.equal(version, '');
+        }
+    });
+
     it('normalizeRepoUrl 把 scp 语法规范化为 ssh:// 且目录名正确', () => {
         const normalized = normalizeRepoUrl('git@github.com:user/repo.git');
         assert.equal(normalized, 'ssh://git@github.com/user/repo.git');
