@@ -12,7 +12,7 @@ import { updateRepo, listBackups, recoverBackup, removeBackup, updateAllRepos } 
 import { npmInstall } from './ops/deps.js';
 import { diagnoseAll } from './ops/diagnose.js';
 import { listDuplicates, removeLocalDuplicate, runAutoDedup } from './ops/dedup.js';
-import { disableExtension, enableExtension, disableAllExtensions, enableAllExtensions, listGovernance, purgeParked } from './ops/governance.js';
+import { disableExtension, enableExtension, disableAllExtensions, enableAllExtensions, listGovernance, purgeParked, readLedger } from './ops/governance.js';
 import { atomicWriteJson, dirNameFromUrl, httpError, normalizeRepoUrl, readJsonOr, redactUrl, sanitizeDirName } from './util.js';
 
 const DEVICE_FLOW_TTL_MS = 10 * 60 * 1000;
@@ -474,6 +474,13 @@ export function createRouter(context) {
     router.get('/governance', wrap(async (request, response) => {
         const dirs = dirsForRequest(identity, request, context.dirs);
         return listGovernance({ dirs });
+    }));
+
+    // 治理台账（只读）：停用/启用/清理的历史记录（封顶，最新在最后）
+    router.get('/governance/ledger', wrap(async (request, response) => {
+        const dirs = dirsForRequest(identity, request, context.dirs);
+        const { actions } = readLedger(dirs);
+        return { actions: [...(Array.isArray(actions) ? actions : [])].slice(-50).reverse() };
     }));
 
     router.post('/governance/disable', wrap(async (request, response) => {

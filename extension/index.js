@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.10';
+const V = '0.9.0';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -979,6 +979,7 @@ function tabGovernance(root) {
                 <button class="stgi-btn" data-role="reload">刷新</button>
                 <button class="stgi-btn" data-role="disableAll">一键停用全部自装扩展</button>
                 <button class="stgi-btn" data-role="enableAll">全部启用</button>
+                <button class="stgi-btn" data-role="ledger">查看台账</button>
                 <span class="stgi-note" data-role="totals"></span>
             </div>
             <table class="stgi-table"><thead>
@@ -989,6 +990,36 @@ function tabGovernance(root) {
 
     const q = role => section.querySelector(`[data-role="${role}"]`);
     const SCOPE_LABEL = { local: '用户扩展', global: '全局扩展', parked: '已停用', plugin: '服务端插件' };
+
+    // 治理台账（只读历史）：停用/启用/清理记录
+    q('ledger').addEventListener('click', async () => {
+        const box = el(`<div>
+            <table class="stgi-table"><thead>
+                <tr><th>时间</th><th>动作</th><th>名称</th><th>释放/占用</th></tr>
+            </thead><tbody data-role="ledgerRows"><tr><td colspan="4">加载中…</td></tr></tbody></table>
+        </div>`);
+        openDialog('治理台账（最近 50 条，最新在前）', box);
+        const rows = box.querySelector('[data-role="ledgerRows"]');
+        try {
+            const { actions } = await api('/governance/ledger');
+            rows.innerHTML = '';
+            if (!actions.length) {
+                rows.innerHTML = '<tr><td colspan="4">还没有治理记录（停用/启用/清理后在这里留痕）</td></tr>';
+                return;
+            }
+            const actionLabel = { disable: '停用', enable: '启用', purge: '清理' };
+            for (const entry of actions) {
+                rows.append(el(`<tr>
+                    <td>${esc(new Date(entry.ts || '').toLocaleString('zh-CN', { hour12: false }))}</td>
+                    <td>${esc(actionLabel[entry.action] || entry.action || '')}</td>
+                    <td>${esc(entry.name || '')}${entry.version ? `<div class="stgi-note">v${esc(entry.version)}</div>` : ''}</td>
+                    <td>${entry.bytes ? esc(humanBytes(Number(entry.bytes))) : '—'}</td>
+                </tr>`));
+            }
+        } catch (error) {
+            rows.innerHTML = `<tr><td colspan="4">加载失败: ${esc(String(error.message || error))}</td></tr>`;
+        }
+    });
 
     async function reload() {
         const rows = q('rows');

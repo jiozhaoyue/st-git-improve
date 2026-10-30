@@ -36,6 +36,15 @@ export function recordAction(registryFile, { action, name, version = '', bytes =
     atomicWriteJson(registryFile, { actions: actions.slice(-REGISTRY_MAX_ACTIONS) });
 }
 
+/**
+ * Read the governance ledger (latest entries last, capped at REGISTRY_MAX_ACTIONS).
+ * @param {{ localExtensionsDir: string }} dirs
+ * @returns {{ actions: Array<{ ts: string, action: string, name: string, version?: string, bytes?: number }> }}
+ */
+export function readLedger(dirs) {
+    return readJsonOr(ledgerFileFor(dirs), { actions: [] });
+}
+
 /** Ledger lookup: latest disable timestamp per name. */
 function parkedAtByName(registryFile) {
     const data = readJsonOr(registryFile, {});
