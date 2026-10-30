@@ -124,6 +124,7 @@
 
 .stgi-log-line.ok { color: #6bcb77; }
 .stgi-log-line.err { color: #ff6b6b; }
+.stgi-log-line.warn { color: #f4b942; }
 
 /* 运行环境卡：键值两列表 */
 .stgi-kv {

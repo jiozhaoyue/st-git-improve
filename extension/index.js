@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.6';
+const V = '0.8.7';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -79,9 +79,10 @@ async function getWhoami() {
     return whoamiCache;
 }
 
-/** 操作日志逐行着色（ok=绿 / err=红 / 默认普通）。 */
+/** 操作日志逐行着色（ok=绿 / err=红 / warn=黄 / 默认普通）。 */
 function appendLogLine(log, line, kind = 'plain') {
-    const row = el(`<div class="stgi-log-line${kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : ''}"></div>`);
+    const cls = kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : kind === 'warn' ? ' warn' : '';
+    const row = el(`<div class="stgi-log-line${cls}"></div>`);
     row.textContent = String(line ?? '');
     log.append(row);
     log.scrollTop = log.scrollHeight;
@@ -194,6 +195,7 @@ function tabAccounts(root) {
                 <button class="stgi-btn" data-role="export">导出账号</button>
                 <input type="file" data-role="importFile" accept="application/json" style="display:none" />
                 <button class="stgi-btn" data-role="import">导入账号</button>
+                <button class="stgi-btn" data-role="testAll">全部测试</button>
                 ${RT.mode === 'server' ? '<span class="stgi-note">「推送服务端」把账号同步给服务端插件（其克隆/治理用它认证）</span>' : ''}
             </div>
             <div class="stgi-note" data-role="summary"></div>
@@ -351,6 +353,35 @@ function tabAccounts(root) {
         } catch (error) {
             toast(String(error.message || error), 'error');
         }
+    });
+
+    q('testAll').addEventListener('click', async event => {
+        const button = event.target;
+        button.disabled = true;
+        const accounts = RT.store.snapshot().accounts;
+        if (accounts.length === 0) {
+            toast('没有可测试的账号', 'error');
+            button.disabled = false;
+            return;
+        }
+        toast(`逐个验证 ${accounts.length} 个账号…`);
+        let okCount = 0;
+        const failed = [];
+        for (const account of accounts) {
+            const label = account.note || account.username || '(匿名)';
+            try {
+                const result = await RT.store.testAccount(account.id);
+                if (result.ok || result.blockedByBrowser) okCount += 1;
+                else failed.push(`${label}（HTTP ${result.status}）`);
+            } catch (error) {
+                if (error?.blockedByBrowser) okCount += 1;
+                else failed.push(`${label}（${error.message || error}）`);
+            }
+        }
+        reload();
+        toast(`全部测试完成：有效 ${okCount}，异常 ${failed.length}${failed.length ? `：${failed.join('、')}` : ''}`,
+            failed.length ? 'error' : 'success');
+        button.disabled = false;
     });
 
     q('export').addEventListener('click', () => {
@@ -688,13 +719,20 @@ async function tabDiagnose(root) {
         button.disabled = true;
         const log = q('log');
         log.style.display = '';
-        log.textContent = 'npm install 运行中…';
+        log.innerHTML = '';
+        const append = (line, kind = 'plain') => appendLogLine(log, line, kind);
+        append('npm install 运行中…');
         try {
             const result = await api('/deps', { body: { preset: 'tavern', rebuildLock } });
-            log.textContent = result.skipped ? '本体无 package.json？' : `完成\n${(result.logTail || []).join('\n')}`;
+            if (result.skipped) {
+                append('本体无 package.json？', 'warn');
+            } else {
+                append('完成', 'ok');
+                for (const line of (result.logTail || [])) append(line);
+            }
             toast('本体依赖修复完成，建议重启酒馆', 'success');
         } catch (error) {
-            log.textContent = `失败: ${error.message || error}`;
+            append(`失败: ${error.message || error}`, 'err');
             toast(String(error.message || error), 'error');
         } finally {
             button.disabled = false;
