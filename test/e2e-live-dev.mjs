@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
 
 const BASE = process.env.ST_GIT_IMPROVE_E2E_BASE || 'http://127.0.0.1:8001';
@@ -42,6 +43,17 @@ function snapshot(dir, base = dir, out = new Map()) {
 let csrfToken = '';
 /** Node fetch (undici) has no cookie jar — track the session cookie manually. */
 const cookieJar = new Map();
+// Luker 等宿主的会话只能由真实页面加载建立（裸 HTTP 不落 cookie，见交接文档廿七节）——
+// 允许用 ST_GIT_IMPROVE_E2E_COOKIE 注入浏览器导出的会话（格式 "name=value; name2=v2"）。
+if (process.env.ST_GIT_IMPROVE_E2E_COOKIE) {
+    for (const pair of String(process.env.ST_GIT_IMPROVE_E2E_COOKIE).split(';')) {
+        const eq = pair.indexOf('=');
+        if (eq > 0) {
+            cookieJar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+        }
+    }
+    console.log('  ↷ 已注入 ST_GIT_IMPROVE_E2E_COOKIE 会话（来自浏览器导出）');
+}
 function takeCookies(response) {
     for (const cookie of response.headers.getSetCookie?.() || []) {
         const [pair] = cookie.split(';');
@@ -107,7 +119,10 @@ const callLong = (verb, urlPath, body) => new Promise((resolve, reject) => {
         return headers;
     };
     run().then(headers => new Promise((resolveRequest, rejectRequest) => {
-        const request = http.request(`${API}${urlPath}`, { method: verb, headers }, response => {
+        // BASE 可能是 https（如 Luker 8003 自签）——按协议选传输模块；https 跳过自签校验
+        const insecureAgent = API.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined;
+        const transport = API.startsWith('https') ? https : http;
+        const request = transport.request(`${API}${urlPath}`, { method: verb, headers, agent: insecureAgent }, response => {
             takeCookies(response);
             const chunks = [];
             response.on('data', chunk => chunks.push(chunk));
