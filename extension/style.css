@@ -58,6 +58,14 @@
     min-width: 120px;
 }
 
+/* 复选/单选不吃 flex 拉伸（否则渲染成 120px 宽的怪异白框） */
+.stgi-row input[type="checkbox"],
+.stgi-row input[type="radio"] {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: auto;
+}
+
 .stgi-table {
     width: 100%;
     border-collapse: collapse;

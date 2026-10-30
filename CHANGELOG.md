@@ -2,6 +2,16 @@
 
 所有显著变更记录在本文件。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.8] - 2026-10-31
+
+### 新增 / 修复
+
+- **服务端模式分支下拉**：安装页输入仓库地址约 0.7s 后自动经新端点 `GET /branches`
+  （引擎 `listRemoteBranches`，ssh/file 由引擎内部路由系统 git；凭据按站点自动解析）
+  拉取远端分支列表，填入分支输入框的 datalist——手填仍可用，列举失败静默不打扰。
+- **修复**：`.stgi-row input` 的 flex 拉伸规则误伤复选/单选框（渲染成 ~120px 宽的怪异
+  白框，账号页「设为默认」最明显）——排除 `[type=checkbox]/[type=radio]`。
+
 ## [0.8.7] - 2026-10-31
 
 ### 新增 / 改进

@@ -9,7 +9,7 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.8.7';
+const V = '0.8.8';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const detectMode = backendMod.detectMode;
@@ -439,7 +439,8 @@ async function tabInstall(root) {
             <div class="stgi-section">
                 <div class="stgi-row">
                     <input data-role="url" placeholder="仓库地址 https://..." style="flex:3 1 260px" />
-                    <input data-role="branch" placeholder="分支（可选）" style="flex:0 1 120px" />
+                    <input data-role="branch" placeholder="分支（可选）" style="flex:0 1 120px" list="stgi-branch-list" />
+                    <datalist id="stgi-branch-list" data-role="branchList"></datalist>
                     <select data-role="target" style="flex:0 0 150px">
                         <option value="extension">用户扩展</option>
                         <option value="global">全局扩展</option>
@@ -483,6 +484,25 @@ async function tabInstall(root) {
         else if (result.level === 'warn') hint.classList.add('stgi-hint-warn');
     }
     q('url').addEventListener('input', updateChannelHint);
+
+    // 服务端模式：地址变化后拉取远端分支列表供分支输入框下拉（失败静默，不阻塞输入）
+    if (RT.mode === 'server') {
+        const datalist = section.querySelector('[data-role="branchList"]');
+        let branchTimer = null;
+        let lastFetched = '';
+        q('url').addEventListener('input', () => {
+            clearTimeout(branchTimer);
+            branchTimer = setTimeout(async () => {
+                const value = q('url').value.trim();
+                if (!value || value === lastFetched) return;
+                try {
+                    const result = await api(`/branches?url=${encodeURIComponent(value)}`);
+                    lastFetched = value;
+                    datalist.innerHTML = (result.branches || []).map(b => `<option value="${esc(b)}"></option>`).join('');
+                } catch { /* 分支列举失败不打扰输入（安装时仍可手填） */ }
+            }, 700);
+        });
+    }
 
     q('go').addEventListener('click', async () => {
         const button = q('go');

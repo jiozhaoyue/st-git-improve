@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { adapters, deviceFlowStart, deviceFlowPoll, getAdapter, detectTypeForHost, normalizeBaseUrl } from './auth/sites.js';
 import { dirsForRequest, isAdminRequest } from './auth/identity.js';
 import { agentForUrl, effectiveProxyMode, invalidateSettingsCache } from './git/proxy-http.js';
-import { systemGitAvailable, systemGitVersion } from './git/engine.js';
+import { listRemoteBranches, systemGitAvailable, systemGitVersion } from './git/engine.js';
 import { pluginDataDir } from './paths.js';
 import { baseDirFor, installFromUrl } from './ops/install.js';
 import { updateRepo, listBackups, recoverBackup, removeBackup, updateAllRepos } from './ops/update.js';
@@ -13,7 +13,7 @@ import { npmInstall } from './ops/deps.js';
 import { diagnoseAll } from './ops/diagnose.js';
 import { listDuplicates, removeLocalDuplicate, runAutoDedup } from './ops/dedup.js';
 import { disableExtension, enableExtension, disableAllExtensions, enableAllExtensions, listGovernance, purgeParked } from './ops/governance.js';
-import { atomicWriteJson, dirNameFromUrl, httpError, readJsonOr, redactUrl, sanitizeDirName } from './util.js';
+import { atomicWriteJson, dirNameFromUrl, httpError, normalizeRepoUrl, readJsonOr, redactUrl, sanitizeDirName } from './util.js';
 
 const DEVICE_FLOW_TTL_MS = 10 * 60 * 1000;
 
@@ -109,6 +109,30 @@ export function createRouter(context) {
             version: systemGitVersion(),
         },
     })));
+
+    // ---------- branches（安装页分支下拉；ssh/file 远端由引擎内部路由系统 git） ----------
+    router.get('/branches', wrap(async (request, response) => {
+        const url = String(request.query.url || '').trim();
+        if (!url) {
+            throw httpError(400, '缺少仓库 URL');
+        }
+        let normalized;
+        try {
+            normalized = normalizeRepoUrl(url);
+        } catch (error) {
+            if (error instanceof URIError || error instanceof TypeError) {
+                throw httpError(400, '无法解析仓库 URL');
+            }
+            throw error; // 编码类错误（如漏导入）不掩盖
+        }
+        const refs = await listRemoteBranches({
+            url: normalized,
+            authResolver: context.store.authResolverForUrl(normalizeForAuth(normalized)),
+        });
+        return {
+            branches: refs.map(entry => String(entry.ref || '').replace(/^refs\/heads\//, '')).filter(Boolean),
+        };
+    }));
 
     // ---------- settings ----------
     router.get('/settings', wrap(() => ({
