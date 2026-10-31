@@ -1111,7 +1111,7 @@ async function confirmDangerous(options) {
         dangerRow.textContent = options.danger;
         body.append(dangerRow);
     }
-    const result = await withBoundedSettle(mod.callGenericPopup(body, mod.POPUP_TYPE.CONFIRM, {
+    const result = await withBoundedSettle(mod.callGenericPopup(body, mod.POPUP_TYPE.CONFIRM, '', {
         okButton: options.okButton || t('popup.ok'),
         cancelButton: t('popup.cancel'),
     }));

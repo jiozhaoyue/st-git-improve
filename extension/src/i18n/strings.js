@@ -46,7 +46,6 @@ export const strings = {
     'env.authorityPresent': '在位 v{version}（能力 {count}/5）',
     'env.authorityAbsent': '未安装（管理功能灰化）',
     'env.currentUser': '当前用户',
-    'env.anonymous': '（匿名）',
     'env.probeAt': '探测时间',
 
     // ---- 总览：分区状态摘要（D4-1 之二；点击跳分区） ----
@@ -125,7 +124,7 @@ export const strings = {
     'gov.colName': '名称',
     'gov.colState': '加载状态',
     'gov.colActions': '操作',
-    'gov.stateOn': '加载中',
+    'gov.stateOn': '启用中',
     'gov.stateOff': '已停用',
     'gov.enable': '启用',
     'gov.disable': '停用',
