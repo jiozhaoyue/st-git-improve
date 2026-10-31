@@ -2,21 +2,13 @@
     "name": "st-git-improve",
     "version": "0.9.2",
     "type": "module",
-    "description": "SillyTavern/Luker server plugin: authenticated private-source install, rebuild-style update with backup, npm dependency repair, diagnostics.",
-    "main": "plugin/index.js",
+    "description": "SillyTavern/Luker pure front-end extension: authenticated private-source install via host native channel, extension governance, diagnostics panel. Optional admin management capabilities via Authority cornerstone plugin.",
     "scripts": {
         "test": "node --test test/*.test.js",
-        "test:integration": "node test/integration.mjs"
-    },
-    "dependencies": {
-        "http-proxy-agent": "^7.0.2",
-        "https-proxy-agent": "^7.0.6",
-        "isomorphic-git": "^1.25.0"
+        "check": "node scripts/ci-check.mjs",
+        "standalone": "node standalone/serve.cjs"
     },
     "engines": {
         "node": ">=18"
-    },
-    "devDependencies": {
-        "express": "^4.22.2"
     }
 }
