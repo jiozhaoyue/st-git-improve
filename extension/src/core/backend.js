@@ -1,10 +1,7 @@
 // 后端适配层（L0-11：适配器 + 特性检测 + 静默降级）。
-// 探测服务端插件是否在位；为各标签页提供统一操作入口：
-//   - 服务端在位 → 插件通道（备份/去重/依赖修复等完整语义）
-//   - 纯前端     → 浏览器克隆 + 宿主原生安装通道（无服务端插件也能装私有仓库）
+// 纯前端架构（0.9.x）：只提供宿主原生通道；服务端插件通道（pluginApi/detectMode）
+// 已随 plugin/ 移除，当前能力态探测由 capability.js 承担。
 
-const API = '/api/plugins/st-git-improve';
-const PROBE_TIMEOUT_MS = 4000;
 const HOST_API_TIMEOUT_MS = 15000;      // 常规宿主通道调用超时（L1-MR-7 有界等待）
 const HOST_INSTALL_TIMEOUT_MS = 180000; // 安装=服务端 git 克隆，可能数十秒，超时放宽
 
@@ -35,33 +32,6 @@ export async function getCsrfToken() {
     return csrfPromise;
 }
 
-/** 服务端插件通道（失败即抛错，与旧版面板语义一致）。 */
-export async function pluginApi(path, options = {}) {
-    const init = { headers: {}, ...options };
-    if (init.body !== undefined) {
-        init.method = init.method || 'POST';
-        init.headers['Content-Type'] = 'application/json';
-        init.body = JSON.stringify(init.body);
-    }
-    if (init.method && init.method !== 'GET') {
-        init.headers['X-CSRF-Token'] = await getCsrfToken();
-    }
-    const response = await fetch(`${API}${path}`, init);
-    const text = await response.text();
-    let data = null;
-    try {
-        data = text ? JSON.parse(text) : null;
-    } catch {
-        data = null;
-    }
-    if (!response.ok) {
-        throw new Error(data?.error || text || `${response.status} ${response.statusText}`);
-    }
-    return data;
-}
-
-let modeCache = null;
-
 /** 简单三段版本比较：a < b → -1，相等 → 0，a > b → 1。非法段按 0 处理。 */
 export function compareVersions(a, b) {
     const pa = String(a || '').split('.').map(n => parseInt(n, 10) || 0);
@@ -71,26 +41,6 @@ export function compareVersions(a, b) {
         if (diff !== 0) return diff < 0 ? -1 : 1;
     }
     return 0;
-}
-
-/** 探测运行模式：'server'（服务端插件在位）| 'pure'（纯前端）。 */
-export async function detectMode({ force = false } = {}) {
-    if (modeCache && !force) return modeCache;
-    try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-        const response = await fetch(`${API}/health`, { signal: controller.signal });
-        clearTimeout(timer);
-        if (response.ok) {
-            const data = await response.json().catch(() => ({}));
-            modeCache = { mode: 'server', info: data };
-            return modeCache;
-        }
-    } catch {
-        /* 服务端不在 */
-    }
-    modeCache = { mode: 'pure', info: null };
-    return modeCache;
 }
 
 // ---------------------------------------------------------------- 宿主原生通道
@@ -223,8 +173,6 @@ export async function hostDeleteExtension(name) {
     return { ok: false, note: result.data?.raw || result.data?.error || `HTTP ${result.status}` };
 }
 
-// ---------------------------------------------------------------- 统一操作门面
-
 /** 宿主原生扩展迁移（local ↔ global）。
  * 实测契约（ST 1.19）：POST /api/extensions/move，body
  * { extensionName: '<不带 third-party/ 前缀>', source: 'local'|'global', destination: 'local'|'global' }，
@@ -235,16 +183,4 @@ export async function hostMoveExtension(name, source, destination) {
     });
     if (result.status === 204) return { ok: true };
     return { ok: result.ok, note: result.data?.error || result.data?.raw || `HTTP ${result.status}` };
-}
-
-export function getBackend() {
-    return {
-        mode: modeCache?.mode || 'pure',
-        info: modeCache?.info || null,
-        pluginApi,
-        hostNativeInstall,
-        hostDiscover,
-        hostSettingsGet,
-        hostToggleExtensionDisabled,
-    };
 }
