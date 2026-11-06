@@ -18,7 +18,7 @@ const { originRepoFromHome, checkSelfUpdate } = await import(`./src/core/selfupd
 const { detectCapabilityState, can } = await import(`./src/core/capability.js?v=${V}`);
 const { t } = await import(`./src/i18n/index.js?v=${V}`);
 const { createGovernanceLog } = await import(`./src/core/governance-log.js?v=${V}`);
-const { fetchBranches, checkRemoteUpdate } = await import(`./src/core/remote-status.js?v=${V}`);
+const { fetchBranches, checkRemoteUpdate, fetchRepoInfo } = await import(`./src/core/remote-status.js?v=${V}`);
 
 function toast(msg, kind = 'info') {
     const toastr = window.toastr;
@@ -492,6 +492,7 @@ function buildInstallEntry(hooks) {
     const section = el(`
         <div class="stgi-section">
             <div class="stgi-note" data-role="channelHint" style="display:none"></div>
+            <div class="stgi-note" data-role="repoSummary" style="display:none"></div>
             <div class="stgi-row">
                 <input data-role="url" placeholder="${esc(t('ext.urlPlaceholder'))}" style="flex:3 1 260px" />
                 <button class="stgi-btn" data-role="paste" title="${esc(t('ext.pasteTitle'))}">${esc(t('ext.paste'))}</button>
@@ -596,6 +597,24 @@ function buildInstallEntry(hooks) {
             if (result.ok) {
                 lastFetched = value;
                 datalist.innerHTML = result.branches.map(b => `<option value="${esc(b)}"></option>`).join('');
+            }
+            // 仓库摘要（描述/默认分支/星标/最近推送——防装错仓库；失败静默不阻塞）
+            const summary = q('repoSummary');
+            const info = await fetchRepoInfo(value, { auth: credential?.auth || null });
+            if (info.ok) {
+                const pushed = info.pushedAt ? new Date(info.pushedAt) : null;
+                const parts = [
+                    info.description,
+                    info.defaultBranch ? t('ext.repoSummaryBranch', { branch: info.defaultBranch }) : '',
+                    info.stars != null ? t('ext.repoSummaryStars', { stars: info.stars }) : '',
+                    pushed && !Number.isNaN(pushed.getTime())
+                        ? t('ext.repoSummaryPushed', { time: pushed.toLocaleString('zh-CN', { hour12: false }) })
+                        : '',
+                ].filter(Boolean);
+                summary.textContent = parts.join(t('common.listSep'));
+                summary.style.display = parts.length ? '' : 'none';
+            } else {
+                summary.style.display = 'none';
             }
         }, 700);
     });

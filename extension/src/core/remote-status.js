@@ -53,26 +53,52 @@ function failure(status, network) {
     return { ok: false, status, reasonKey: 'remote.err.http' };
 }
 
-/** 统一站点端点（返回 { url, headers } 或 { fail: reasonKey }）。 */
-function endpoint(repo, path, { auth, query = '' } = {}) {
+/** 单站点端点（type 已知时；返回 { url, headers } 或 { fail: reasonKey }）。 */
+function endpointFor(type, repo, path, { auth, query = '' } = {}) {
     const origin = new URL(repo.httpsUrl).origin;
-    if (repo.type === 'github') {
+    if (type === 'github') {
         return { url: `https://api.github.com/repos/${repo.owner}/${repo.repo}${path}${query}`, headers: { 'User-Agent': 'st-git-improve', ...authHeaders('github', auth) } };
     }
-    if (repo.type === 'gitlab') {
+    if (type === 'gitlab') {
         const project = encodeURIComponent(`${repo.owner}/${repo.repo}`);
         return { url: `${origin}/api/v4/projects/${project}${path}${query}`, headers: authHeaders('gitlab', auth) };
     }
-    if (repo.type === 'gitea') {
+    if (type === 'gitea') {
         return { url: `${origin}/api/v1/repos/${repo.owner}/${repo.repo}${path}${query}`, headers: authHeaders('gitea', auth) };
     }
-    if (repo.type === 'gitee') {
+    if (type === 'gitee') {
         const tokenQuery = giteeTokenQuery(auth);
         const joiner = query || tokenQuery ? '?' : '';
         const parts = [query.replace(/^\?/, ''), tokenQuery].filter(Boolean).join('&');
         return { url: `https://gitee.com/api/v5/repos/${repo.owner}/${repo.repo}${path}${joiner}${parts}`, headers: {} };
     }
     return { fail: 'remote.err.unsupportedSite' };
+}
+
+/**
+ * 候选端点序列：host 可识别（github/gitlab.com/gitee.com）→ 单端点；
+ * 自建站点（host 无法判型，实测 parseRepoUrl 对自建一律返回空 type）→
+ * 依次探测 gitea / gitlab 两种 API 形态（404 才换下一个——401/403/网络错误直接上报）。
+ */
+function endpointCandidates(repo, path, opts = {}) {
+    if (repo.type) return [endpointFor(repo.type, repo, path, opts)];
+    return [endpointFor('gitea', repo, path, opts), endpointFor('gitlab', repo, path, opts)];
+}
+
+/**
+ * 依次尝试候选端点；ok 即用，否则按「未知 host 且 404 → 换下一形态」规则收敛，
+ * 返回 { result } 或 { failure }（failure.reasonKey 供 UI 降级显示）。
+ */
+async function tryEndpoints(candidates, { fetchImpl } = {}) {
+    let last = null;
+    for (const ep of candidates) {
+        if (ep.fail) return { failure: { ok: false, status: 0, reasonKey: ep.fail } };
+        const result = await requestJson(ep.url, { headers: ep.headers, fetchImpl });
+        if (result.ok) return { result };
+        last = failure(result.status, result.network);
+        if (!(candidates.length > 1 && result.status === 404)) break;
+    }
+    return { failure: last };
 }
 
 /**
@@ -88,13 +114,12 @@ export async function fetchBranches(repoUrl, { auth = null, fetchImpl } = {}) {
     } catch {
         return { ok: false, branches: [], reasonKey: 'remote.err.badUrl' };
     }
-    const ep = endpoint(repo, '/branches', { auth, query: repo.type === 'github' ? '?per_page=100' : '' });
-    if (ep.fail) return { ok: false, branches: [], reasonKey: ep.fail };
-    const result = await requestJson(ep.url, { headers: ep.headers, fetchImpl });
-    if (!result.ok) {
-        const failed = failure(result.status, result.network);
-        return { ok: false, branches: [], reasonKey: failed.reasonKey };
-    }
+    const tried = await tryEndpoints(
+        endpointCandidates(repo, '/branches', { auth, query: repo.type === 'github' ? '?per_page=100' : '' }),
+        { fetchImpl },
+    );
+    if (tried.failure) return { ok: false, branches: [], reasonKey: tried.failure.reasonKey };
+    const result = tried.result;
     if (!Array.isArray(result.data)) {
         return { ok: false, branches: [], reasonKey: 'remote.err.badPayload' };
     }
@@ -113,31 +138,55 @@ export async function fetchRemoteHead(repoUrl, { branch = '', auth = null, fetch
     } catch {
         return { ok: false, sha: '', reasonKey: 'remote.err.badUrl' };
     }
-    let ep;
-    if (repo.type === 'github') {
-        ep = endpoint(repo, '/commits', { auth, query: `?per_page=1${branch ? `&sha=${encodeURIComponent(branch)}` : ''}` });
-    } else if (repo.type === 'gitlab') {
-        ep = endpoint(repo, '/repository/commits', { auth, query: `?per_page=1${branch ? `&ref_name=${encodeURIComponent(branch)}` : ''}` });
-    } else if (repo.type === 'gitea') {
-        ep = endpoint(repo, '/commits', { auth, query: `?limit=1${branch ? `&sha=${encodeURIComponent(branch)}` : ''}` });
-    } else if (repo.type === 'gitee') {
-        ep = endpoint(repo, '/commits', { auth, query: `?per_page=1${branch ? `&sha=${encodeURIComponent(branch)}` : ''}` });
-    } else {
-        return { ok: false, sha: '', reasonKey: 'remote.err.unsupportedSite' };
-    }
-    if (ep.fail) return { ok: false, sha: '', reasonKey: ep.fail };
-    const result = await requestJson(ep.url, { headers: ep.headers, fetchImpl });
-    if (!result.ok) {
-        const failed = failure(result.status, result.network);
-        return { ok: false, sha: '', reasonKey: failed.reasonKey };
-    }
+    // 各站点 HEAD 端点构造（path / query 参数名有差异）
+    const headCandidate = type => {
+        if (type === 'github') return endpointFor('github', repo, '/commits', { auth, query: `?per_page=1${branch ? `&sha=${encodeURIComponent(branch)}` : ''}` });
+        if (type === 'gitlab') return endpointFor('gitlab', repo, '/repository/commits', { auth, query: `?per_page=1${branch ? `&ref_name=${encodeURIComponent(branch)}` : ''}` });
+        if (type === 'gitea') return endpointFor('gitea', repo, '/commits', { auth, query: `?limit=1${branch ? `&sha=${encodeURIComponent(branch)}` : ''}` });
+        if (type === 'gitee') return endpointFor('gitee', repo, '/commits', { auth, query: `?per_page=1${branch ? `&sha=${encodeURIComponent(branch)}` : ''}` });
+        return { fail: 'remote.err.unsupportedSite' };
+    };
+    const candidates = repo.type ? [headCandidate(repo.type)] : [headCandidate('gitea'), headCandidate('gitlab')];
+    const tried = await tryEndpoints(candidates, { fetchImpl });
+    if (tried.failure) return { ok: false, sha: '', reasonKey: tried.failure.reasonKey };
     // 各站点统一按数组返回（per_page=1）；单对象形态（部分自建 Gitea）也兼容
-    const first = Array.isArray(result.data) ? result.data[0] : result.data;
+    const first = Array.isArray(tried.result.data) ? tried.result.data[0] : tried.result.data;
     const sha = String(first?.sha || first?.id || '');
     if (!sha) {
         return { ok: false, sha: '', reasonKey: 'remote.err.badPayload' };
     }
     return { ok: true, sha, reasonKey: null };
+}
+
+/**
+ * 仓库摘要（安装前快速识别：描述 / 默认分支 / 最近推送 / 星标；D3-1 #8 站点 API 同族）。
+ * @param {string} repoUrl
+ * @param {{ auth?: { username: string, password: string } | null, fetchImpl?: typeof fetch }} options
+ * @returns {Promise<{ ok: boolean, description: string, defaultBranch: string, pushedAt: string, stars: number | null, reasonKey: string | null }>}
+ */
+export async function fetchRepoInfo(repoUrl, { auth = null, fetchImpl } = {}) {
+    const empty = { ok: false, description: '', defaultBranch: '', pushedAt: '', stars: null, reasonKey: 'remote.err.badUrl' };
+    let repo;
+    try {
+        repo = parseRepoUrl(repoUrl);
+    } catch {
+        return empty;
+    }
+    const tried = await tryEndpoints(endpointCandidates(repo, '', { auth }), { fetchImpl });
+    if (tried.failure) return { ...empty, reasonKey: tried.failure.reasonKey };
+    const d = tried.result.data;
+    if (!d || typeof d !== 'object') {
+        return { ...empty, reasonKey: 'remote.err.badPayload' };
+    }
+    const starsRaw = d.stargazers_count ?? d.star_count;
+    return {
+        ok: true,
+        description: String(d.description || ''),
+        defaultBranch: String(d.default_branch || ''),
+        pushedAt: String(d.pushed_at || d.last_activity_at || d.updated_at || ''),
+        stars: Number.isFinite(Number(starsRaw)) ? Number(starsRaw) : null,
+        reasonKey: null,
+    };
 }
 
 /**
