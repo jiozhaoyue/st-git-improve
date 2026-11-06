@@ -1,3 +1,5 @@
+// 【已废弃 2026-11-07】包装目标 e2e-live-dev.mjs 针对已移除的服务端插件架构（见该文件头部）。
+// 会话注入方法论保留；面板活体验证改用 test/e2e-panel-cases.mjs（自带 Dev 白名单）。
 // 活体 E2E 一键包装：Playwright 取会话 cookie → 注入 e2e-live-dev.mjs 跑套件。
 // 用途：Luker 等宿主的会话只能由真实页面加载建立（交接文档廿七节）。
 // Run: ST_GIT_IMPROVE_E2E_BASE=https://127.0.0.1:8003 node test/e2e-live-session.mjs

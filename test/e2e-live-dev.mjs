@@ -1,3 +1,9 @@
+// 【已废弃 2026-11-07】本套件针对**已移除的服务端插件架构**（/api/plugins/st-git-improve
+// 健康检查、plugins/ 目录、extensions-disabled 停用区——0.9.x 纯前端化重构时 plugin/ 已删，
+// 这些端点/目录在当前架构下不存在，跑起来必然失败）。
+// 面板的活体验证改用：test/e2e-panel-cases.mjs（面板用例）+ test/e2e-screenshot-ui.mjs（截图）。
+// 本文件的会话注入/数据快照/端口白名单方法论保留，供未来 Authority 服务端能力集成时参考。
+
 // Live E2E against a Dev instance (ST on 8001, Luker on 8003) with this
 // plugin installed and enableServerPlugins on. SAFETY: refuses any base URL
 // whose port is not a Dev port — Real instances live on 8002/8004.
