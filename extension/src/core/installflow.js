@@ -4,7 +4,7 @@
 // 额外能力：克隆结果可导出为 zip（buildZipBytes），供本地备份/手动上传。
 
 // 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
-const V = '0.8.3';
+const V = '0.9.3';
 
 const { parseRepoUrl } = await import(`./sites.js?v=${V}`);
 const { cloneToMemory } = await import(`./gitbrowser.js?v=${V}`);
@@ -24,56 +24,42 @@ export function buildAuthedUrl(repoUrl, auth) {
 }
 
 /**
- * 预检：仓库存在性 + 凭据可用性（走各站点 API，主流站点的 API 支持 CORS）。
+ * 预检：仓库存在性 + 凭据可用性（复用 remote-status 的站点 API 探测链——
+ * 含自建站点候选端点探测，此前本函数自建端点实现重复且 type='' 直接跳过）。
  * 失败（含 CORS/网络）一律静默放行 —— 预检只是提前给出清晰错误，不拦截安装。
- * @returns {Promise<{ ok: boolean | null, status?: number, login?: string, note: string }>}
+ * @returns {Promise<{ ok: boolean | null, status?: number, note: string }>}
  */
-export async function preflightAccessible(repoUrl, auth) {
+export async function preflightAccessible(repoUrl, auth, { fetchImpl } = {}) {
     let repo;
     try {
         repo = parseRepoUrl(repoUrl);
     } catch (error) {
         return { ok: false, note: error.message || String(error) };
     }
-    try {
-        let url;
-        let headers = {};
-        if (repo.type === 'github') {
-            url = `https://api.github.com/repos/${repo.owner}/${repo.repo}`;
-            if (auth) headers = { Authorization: `Bearer ${auth.password}`, 'User-Agent': 'st-git-improve' };
-        } else if (repo.type === 'gitlab') {
-            const base = repo.host === 'gitlab.com' ? 'https://gitlab.com' : `${repo.httpsUrl.split('/').slice(0, 3).join('/')}`;
-            url = `${base}/api/v4/projects/${encodeURIComponent(`${repo.owner}/${repo.repo}`)}`;
-            if (auth) headers = { Authorization: `Bearer ${auth.password}` };
-        } else if (repo.type === 'gitea') {
-            const base = repo.httpsUrl.split('/').slice(0, 3).join('/');
-            url = `${base}/api/v1/repos/${repo.owner}/${repo.repo}`;
-            if (auth) headers = { Authorization: `token ${auth.password}` };
-        } else if (repo.type === 'gitee') {
-            url = `https://gitee.com/api/v5/repos/${repo.owner}/${repo.repo}`;
-        } else {
-            return { ok: null, note: '未知站点类型，跳过预检' };
-        }
-        const response = await fetch(url, { headers, Accept: 'application/json' });
-        if (response.ok) {
-            return { ok: true, status: response.status, note: '仓库可达' };
-        }
-        if (response.status === 401) {
-            return { ok: false, status: 401, note: '凭据无效（401）——请到「账号」页更新该站点凭据' };
-        }
-        if (response.status === 404) {
-            return {
-                ok: false,
-                status: 404,
-                note: auth
-                    ? '仓库不存在或该账号无权访问（404）——确认仓库地址与账号权限'
-                    : '仓库不存在或为私有仓库（404）——私有仓库请先在「账号」页登录该站点',
-            };
-        }
-        return { ok: null, status: response.status, note: `预检 HTTP ${response.status}（不阻断）` };
-    } catch {
-        return { ok: null, note: '预检不可达（CORS/网络），跳过 —— 以实际安装结果为准' };
+    const { fetchRepoInfo } = await import(`./remote-status.js?v=${V}`);
+    const info = await fetchRepoInfo(repoUrl, {
+        auth: auth ? { username: auth.username, password: auth.password } : null,
+        fetchImpl,
+    });
+    if (info.ok) {
+        return { ok: true, status: info.status, note: '仓库可达' };
     }
+    if (info.reasonKey === 'remote.err.notFound') {
+        return {
+            ok: false,
+            status: 404,
+            note: auth
+                ? '仓库不存在或该账号无权访问（404）——确认仓库地址与账号权限'
+                : '仓库不存在或为私有仓库（404）——私有仓库请先在「账号」页登录该站点',
+        };
+    }
+    if (info.reasonKey === 'remote.err.http' && info.status === 401) {
+        return { ok: false, status: 401, note: '凭据无效（401）——请到「账号」页更新该站点凭据' };
+    }
+    if (info.reasonKey === 'remote.err.unsupportedSite') {
+        return { ok: null, note: '未知站点类型，跳过预检' };
+    }
+    return { ok: null, status: info.status || undefined, note: '预检不可达（CORS/网络），跳过 —— 以实际安装结果为准' };
 }
 
 /**

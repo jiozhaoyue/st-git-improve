@@ -165,7 +165,7 @@ export async function fetchRemoteHead(repoUrl, { branch = '', auth = null, fetch
  * @returns {Promise<{ ok: boolean, description: string, defaultBranch: string, pushedAt: string, stars: number | null, reasonKey: string | null }>}
  */
 export async function fetchRepoInfo(repoUrl, { auth = null, fetchImpl } = {}) {
-    const empty = { ok: false, description: '', defaultBranch: '', pushedAt: '', stars: null, reasonKey: 'remote.err.badUrl' };
+    const empty = { ok: false, description: '', defaultBranch: '', pushedAt: '', stars: null, reasonKey: 'remote.err.badUrl', status: 0 };
     let repo;
     try {
         repo = parseRepoUrl(repoUrl);
@@ -173,7 +173,7 @@ export async function fetchRepoInfo(repoUrl, { auth = null, fetchImpl } = {}) {
         return empty;
     }
     const tried = await tryEndpoints(endpointCandidates(repo, '', { auth }), { fetchImpl });
-    if (tried.failure) return { ...empty, reasonKey: tried.failure.reasonKey };
+    if (tried.failure) return { ...empty, reasonKey: tried.failure.reasonKey, status: tried.failure.status ?? 0 };
     const d = tried.result.data;
     if (!d || typeof d !== 'object') {
         return { ...empty, reasonKey: 'remote.err.badPayload' };
@@ -186,6 +186,7 @@ export async function fetchRepoInfo(repoUrl, { auth = null, fetchImpl } = {}) {
         pushedAt: String(d.pushed_at || d.last_activity_at || d.updated_at || ''),
         stars: Number.isFinite(Number(starsRaw)) ? Number(starsRaw) : null,
         reasonKey: null,
+        status: tried.result.status,
     };
 }
 
