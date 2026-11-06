@@ -15,7 +15,10 @@ try {
 
 const browser = await chromium.launch({ headless: true });
 try {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+    });
     const page = await context.newPage();
     await page.goto('http://127.0.0.1:3040', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForSelector('.stgi-block', { timeout: 60000, state: 'attached' });
@@ -62,6 +65,16 @@ try {
     await page.screenshot({ path: 'test-results/journey-4-install-attempt.png' });
     console.log('安装日志:', JSON.stringify(await page.evaluate(() => document.querySelector('[data-role="log"]')?.textContent?.trim().slice(0, 200))));
     console.log('安装按钮文字:', JSON.stringify(await page.evaluate(() => document.querySelector('[data-zone="extensions"] [data-role="go"]')?.textContent?.trim())));
+
+    // 步骤 3b：失败日志的「复制日志」按钮（排障正发生在失败场景）
+    await page.evaluate(() => {
+        const btn = [...document.querySelectorAll('[data-zone="extensions"] button')]
+            .find(b => b.textContent.trim() === '复制日志' && b.offsetParent !== null);
+        btn?.click();
+    });
+    await page.waitForTimeout(800);
+    console.log('复制日志 toast:', await page.evaluate(() => [...document.querySelectorAll('#toast-container .toast')].map(x => x.textContent.trim()).slice(-1)));
+    console.log('日志剪贴板:', JSON.stringify((await page.evaluate(() => navigator.clipboard.readText())).slice(0, 120)));
 
     // 步骤 4：已装列表（st-git-improve 无登记 → 登记来源按钮可见）
     await page.evaluate(() => document.querySelector('[data-zone="extensions"] [data-role="rows"]')?.scrollIntoView({ block: 'center' }));
