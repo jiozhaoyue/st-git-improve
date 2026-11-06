@@ -2,7 +2,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isSystemGitUrl, classifyUrl, channelHint } from '../extension/src/core/giturl.js';
+import { isSystemGitUrl, classifyUrl, channelHint, normalizeRepoInput, repoWebUrlFromClone } from '../extension/src/core/giturl.js';
 
 describe('giturl: isSystemGitUrl（与引擎判定同规则）', () => {
     it('识别 ssh/scp/git/file 形态', () => {
@@ -81,5 +81,61 @@ describe('giturl: channelHint（按运行模式合成安装页提示）', () => 
     it('未知地址 → warn 级', () => {
         const hint = channelHint('ftp://x/y', { mode: 'server' });
         assert.equal(hint.level, 'warn');
+    });
+});
+
+describe('giturl: normalizeRepoInput（安装入口输入归一化）', () => {
+    it('裸 owner/repo → GitHub 克隆地址', () => {
+        const result = normalizeRepoInput('jiozhaoyue/ST-Switcher');
+        assert.equal(result.url, 'https://github.com/jiozhaoyue/ST-Switcher');
+        assert.equal(result.changed, true);
+        assert.match(result.note, /github\.com/);
+    });
+
+    it('gh:/gitee:/gitlab: 前缀短写 → 对应托管站克隆地址', () => {
+        assert.equal(normalizeRepoInput('gh:a/b').url, 'https://github.com/a/b');
+        assert.equal(normalizeRepoInput('GH:a/b').url, 'https://github.com/a/b');
+        assert.equal(normalizeRepoInput('gitee:a/b').url, 'https://gitee.com/a/b');
+        assert.equal(normalizeRepoInput('gitlab:a/b').url, 'https://gitlab.com/a/b');
+        assert.equal(normalizeRepoInput('github:a/b').changed, true);
+    });
+
+    it('GitHub/Gitee 仓库页面 URL → 仓库根', () => {
+        const tree = normalizeRepoInput('https://github.com/a/b/tree/main');
+        assert.equal(tree.url, 'https://github.com/a/b');
+        assert.equal(tree.changed, true);
+        const blob = normalizeRepoInput('https://github.com/a/b/blob/main/README.md');
+        assert.equal(blob.url, 'https://github.com/a/b');
+        const gitee = normalizeRepoInput('https://gitee.com/a/b/releases');
+        assert.equal(gitee.url, 'https://gitee.com/a/b');
+    });
+
+    it('已经是克隆地址 / scp / file / 空值 → 原样不动', () => {
+        assert.equal(normalizeRepoInput('https://github.com/a/b').changed, false);
+        assert.equal(normalizeRepoInput('https://gitea.example.com/a/b.git').changed, false);
+        assert.equal(normalizeRepoInput('git@github.com:a/b.git').changed, false);
+        assert.equal(normalizeRepoInput('file:///d/repos/demo').changed, false);
+        assert.equal(normalizeRepoInput('').changed, false);
+        assert.equal(normalizeRepoInput(undefined).url, '');
+    });
+
+    it('gitlab 页面 URL 不做归一化（子组路径歧义）', () => {
+        assert.equal(normalizeRepoInput('https://gitlab.com/group/sub/repo/tree/main').changed, false);
+    });
+});
+
+describe('giturl: repoWebUrlFromClone（克隆地址 → 仓库主页）', () => {
+    it('https 克隆地址去 .git；scp 形态转 https', () => {
+        assert.equal(repoWebUrlFromClone('https://github.com/a/b.git'), 'https://github.com/a/b');
+        assert.equal(repoWebUrlFromClone('https://github.com/a/b'), 'https://github.com/a/b');
+        assert.equal(repoWebUrlFromClone('git@github.com:a/b.git'), 'https://github.com/a/b');
+        assert.equal(repoWebUrlFromClone('https://gitea.example.com/a/b.git'), 'https://gitea.example.com/a/b');
+    });
+
+    it('无法解析的形态返回 null', () => {
+        assert.equal(repoWebUrlFromClone(''), null);
+        assert.equal(repoWebUrlFromClone('ssh://git@host/path'), null);
+        assert.equal(repoWebUrlFromClone('file:///d/repos/demo'), null);
+        assert.equal(repoWebUrlFromClone(undefined), null);
     });
 });

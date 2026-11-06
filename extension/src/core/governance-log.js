@@ -8,7 +8,7 @@
 // 纯逻辑、无 DOM 依赖（L1-MR-6 三形态同构）；无 window 的环境自动落到内存适配器。
 
 // 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
-const V = '0.9.2';
+const V = '0.9.3';
 
 const KEY = 'st_git_improve_governance';
 const MAX_ENTRIES = 200;
@@ -168,6 +168,10 @@ export function createGovernanceLog() {
         async list({ limit = 50 } = {}) {
             const entries = await readAll();
             return entries.slice(0, Math.max(1, Number(limit) || 50));
+        },
+        /** 清空台账（服务端事实源与兜底缓存同步写空集；不追加记录）。 */
+        async clear() {
+            await writeAll([]);
         },
     };
 }

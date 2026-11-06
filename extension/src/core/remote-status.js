@@ -9,7 +9,7 @@
 // 纯逻辑、无 DOM 依赖（L1-MR-6）；fetch 可注入以便单测。
 
 // 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏），见 index.js 说明。
-const V = '0.9.2';
+const V = '0.9.3';
 
 const { parseRepoUrl } = await import(`./sites.js?v=${V}`);
 

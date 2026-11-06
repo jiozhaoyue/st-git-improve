@@ -30,6 +30,7 @@ export const strings = {
     'popup.confirmUpdate': '继续更新',
     'popup.confirmUninstall': '卸载',
     'popup.confirmDelete': '删除',
+    'popup.confirmClear': '清空',
 
     // ---- 运行环境卡（D4-1 首屏三件套之一；D3-3 三态徽标） ----
     'env.title': '运行环境',
@@ -95,6 +96,7 @@ export const strings = {
     'ext.source': '来源',
     'ext.installedAt': '装于',
     'ext.updatable': '可更新',
+    'ext.repoHomeTitle': '打开仓库主页',
     'ext.remoteChecking': '检查中…',
     'ext.remoteNewer': '有新版本',
     'ext.remoteSame': '已是最新',
@@ -115,6 +117,8 @@ export const strings = {
     'confirm.uninstallDanger': '不可恢复：目录删除后需重新安装才能恢复。',
     'confirm.dedupText': '删除 {name} 的本地重复副本？全局版继续可用。',
     'confirm.dedupDanger': '纯前端无法核实本地改动——若有未推送的修改将一并丢失，不可恢复。',
+    'confirm.ledgerClearText': '清空治理台账：将删除全部 {count} 条历史记录。',
+    'confirm.ledgerClearDanger': '不可恢复：操作留痕删除后无法找回。',
 
     // ---- 分区二：治理与清理（D5-2 停用/启用/去重/台账；D3-4 常显灰化） ----
     'gov.title': '治理与清理',
@@ -139,6 +143,9 @@ export const strings = {
     'gov.dedupDelete': '删除本地副本',
     'gov.versionUnknown': '?',
     'gov.ledgerToggle': '治理台账',
+    'gov.ledgerExport': '导出台账',
+    'gov.ledgerClear': '清空台账',
+    'gov.ledgerCleared': '台账已清空',
     'gov.ledgerEmpty': '还没有治理记录（停用/启用/卸载/迁移/清理后在这里留痕）',
     'gov.ledgerColTime': '时间',
     'gov.ledgerColAction': '动作',
@@ -173,7 +180,7 @@ export const strings = {
     'acc.baseUrlPlaceholder': '站点地址，如 https://git.example.com',
     'acc.usernamePlaceholder': '用户名（可选）',
     'acc.tokenPlaceholder': '访问令牌 (PAT)',
-    'acc.notePlaceholder': '备注（可选，如 主号/小号）',
+    'acc.notePlaceholder': '备注（可选）',
     'acc.makeDefaultLabel': '设为该站点默认账号',
     'acc.add': '添加账号',
     'acc.otherMethods': '其他登录方式',

@@ -6,14 +6,14 @@
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
-const V = '0.9.2';
+const V = '0.9.3';
 
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const { hostDiscover, hostSettingsGet, hostToggleExtensionDisabled, hostMoveExtension, hostDeleteExtension } = backendMod;
 const { getSharedStore } = await import(`./src/core/accounts.js?v=${V}`);
 const { SITE_TYPES, siteKeyOf } = await import(`./src/core/sites.js?v=${V}`);
 const { pureInstall, buildZipBytes } = await import(`./src/core/installflow.js?v=${V}`);
-const { channelHint, classifyUrl } = await import(`./src/core/giturl.js?v=${V}`);
+const { channelHint, classifyUrl, normalizeRepoInput, repoWebUrlFromClone } = await import(`./src/core/giturl.js?v=${V}`);
 const { originRepoFromHome, checkSelfUpdate } = await import(`./src/core/selfupdate.js?v=${V}`);
 const { detectCapabilityState, can } = await import(`./src/core/capability.js?v=${V}`);
 const { t } = await import(`./src/i18n/index.js?v=${V}`);
@@ -504,18 +504,29 @@ function buildInstallEntry(hooks) {
     const q = role => section.querySelector(`[data-role="${role}"]`);
     applyGate(q('go'), can('install', RT.cap));
 
-    // 通道可视化：输入地址即时显示将走的克隆通道（含不可用预警）
+    // 通道可视化 + 输入归一化：短写（owner/repo、gh:…）与仓库页面 URL 即时识别——
+    // 输入期间只在提示行预告，失焦时才回填输入框（不打断输入）；提交前再归一化一次。
     const hint = q('channelHint');
     function updateChannelHint() {
-        const result = channelHint(q('url').value, { mode: 'pure' });
-        hint.textContent = result.text;
-        hint.style.display = result.text ? '' : 'none';
+        const normalized = normalizeRepoInput(q('url').value);
+        const result = channelHint(normalized.url, { mode: 'pure' });
+        const note = normalized.changed ? `${normalized.note} ` : '';
+        hint.textContent = `${note}${result.text}`;
+        hint.style.display = hint.textContent ? '' : 'none';
         hint.classList.remove('stgi-hint-ok', 'stgi-hint-err', 'stgi-hint-warn');
         if (result.level === 'ok') hint.classList.add('stgi-hint-ok');
         else if (result.level === 'error') hint.classList.add('stgi-hint-err');
         else if (result.level === 'warn') hint.classList.add('stgi-hint-warn');
     }
+    function applyNormalization() {
+        const normalized = normalizeRepoInput(q('url').value);
+        if (normalized.changed) {
+            q('url').value = normalized.url;
+            toast(normalized.note);
+        }
+    }
     q('url').addEventListener('input', updateChannelHint);
+    q('url').addEventListener('blur', applyNormalization);
 
     // 分支下拉（D3-1 #8 站点 API）：地址变化后拉取远端分支列表（失败静默，不阻塞输入；
     // 公开仓库无需凭据，私有仓库用该站点默认账号 token）
@@ -525,7 +536,7 @@ function buildInstallEntry(hooks) {
     q('url').addEventListener('input', () => {
         clearTimeout(branchTimer);
         branchTimer = setTimeout(async () => {
-            const value = q('url').value.trim();
+            const value = normalizeRepoInput(q('url').value).url;
             if (!value || value === lastFetched) return;
             const credential = await RT.store.credentialsFor(value).catch(() => null);
             const result = await fetchBranches(value, { auth: credential?.auth || null });
@@ -539,6 +550,7 @@ function buildInstallEntry(hooks) {
     q('go').addEventListener('click', async () => {
         const button = q('go');
         button.disabled = true;
+        applyNormalization();
         const log = q('log');
         log.style.display = '';
         const append = (line, kind = 'plain') => appendLogLine(log, line, kind);
@@ -711,8 +723,12 @@ function buildExtensionsZone(hooks) {
                 const originNote = origin
                     ? `<div class="stgi-note">${t('ext.source')}: ${esc(origin.url)}${origin.branch ? ` @${esc(origin.branch)}` : ''}${esc(installedNote)}</div>`
                     : '';
+                const homeUrl = origin ? repoWebUrlFromClone(origin.url) : null;
+                const homeLink = homeUrl
+                    ? ` <a class="stgi-repo-link" href="${esc(homeUrl)}" target="_blank" rel="noopener noreferrer" title="${esc(t('ext.repoHomeTitle'))}">↗</a>`
+                    : '';
                 const row = el(`<tr>
-                    <td>${esc(entry.name || '')}${origin ? `<span class="stgi-badge good">${esc(t('ext.updatable'))}</span>` : ''}${originNote}</td>
+                    <td><span class="stgi-name">${esc(entry.name || '')}</span>${homeLink}${origin ? `<span class="stgi-badge good">${esc(t('ext.updatable'))}</span>` : ''}${originNote}</td>
                     <td>${esc(entry.version || '')}</td>
                     <td data-role="remoteCell">${esc(origin ? t('ext.remoteChecking') : t('ext.remoteUnknown'))}</td>
                     <td><button class="stgi-btn" data-act="extNeedAuthority" disabled title="${esc(t('cap.reason.needAuthority'))}">${esc(t('ext.needAuthority'))}</button></td>
@@ -808,10 +824,12 @@ function buildGovernanceZone(hooks) {
                     <tr><th>${esc(t('gov.colName'))}</th><th>${esc(t('ext.colVersion'))}</th><th>${esc(t('gov.colActions'))}</th></tr>
                 </thead><tbody data-role="dedupRows"></tbody></table>
             </div>
-            <div class="stgi-section">
-                <div class="stgi-row">
-                    <button class="stgi-btn" data-act="govLedgerToggle">${esc(t('gov.ledgerToggle'))}</button>
-                </div>
+                <div class="stgi-section">
+                    <div class="stgi-row">
+                        <button class="stgi-btn" data-act="govLedgerToggle">${esc(t('gov.ledgerToggle'))}</button>
+                        <button class="stgi-btn" data-act="govLedgerExport">${esc(t('gov.ledgerExport'))}</button>
+                        <button class="stgi-btn" data-act="govLedgerClear">${esc(t('gov.ledgerClear'))}</button>
+                    </div>
                 <table class="stgi-table" data-role="ledgerTable" style="display:none"><thead>
                     <tr><th>${esc(t('gov.ledgerColTime'))}</th><th>${esc(t('gov.ledgerColAction'))}</th><th>${esc(t('gov.ledgerColName'))}</th><th>${esc(t('gov.ledgerColDetail'))}</th></tr>
                 </thead><tbody data-role="ledgerRows"></tbody></table>
@@ -853,7 +871,7 @@ function buildGovernanceZone(hooks) {
         }
         for (const dup of duplicates) {
             const row = el(`<tr>
-                <td>${esc(dup.local.name)}</td>
+                <td><span class="stgi-name">${esc(dup.local.name)}</span></td>
                 <td>${esc(dup.local.version || t('gov.versionUnknown'))} → ${esc(dup.global.version || t('gov.versionUnknown'))}</td>
                 <td class="stgi-actions-cell"></td>
             </tr>`);
@@ -938,7 +956,7 @@ function buildGovernanceZone(hooks) {
                 const isDisabled = disabled.has(name);
                 const scope = scopeByName.get(name) || 'local';
                 const row = el(`<tr>
-                    <td>${esc(name)}<div class="stgi-note">${esc(scope === 'global' ? t('gov.scopeGlobalNote') : t('gov.scopeLocalNote'))}</div></td>
+                    <td><span class="stgi-name">${esc(name)}</span><div class="stgi-note">${esc(scope === 'global' ? t('gov.scopeGlobalNote') : t('gov.scopeLocalNote'))}</div></td>
                     <td>${isDisabled ? `<span class="stgi-badge warn">${esc(t('gov.stateOff'))}</span>` : `<span class="stgi-badge good">${esc(t('gov.stateOn'))}</span>`}</td>
                     <td class="stgi-actions-cell"></td>
                 </tr>`);
@@ -1036,6 +1054,41 @@ function buildGovernanceZone(hooks) {
             }
         } catch (error) {
             ledgerRows.innerHTML = `<tr><td colspan="4">${esc(t('gov.loadFailed', { message: String(error?.message || error) }))}</td></tr>`;
+        }
+    });
+
+    // 导出台账（JSON 下载；全部记录，封顶 200 条）
+    box.querySelector('[data-act="govLedgerExport"]').addEventListener('click', async () => {
+        try {
+            const actions = await RT.govLog.list({ limit: 200 });
+            const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), entries: actions }, null, 2)], { type: 'application/json' });
+            const link = el(`<a href="${URL.createObjectURL(blob)}" download="st-git-improve-governance.json"></a>`);
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+        } catch (error) {
+            toast(String(error.message || error), 'error');
+        }
+    });
+
+    // 清空台账（强确认：不可恢复）
+    box.querySelector('[data-act="govLedgerClear"]').addEventListener('click', async () => {
+        try {
+            const count = (await RT.govLog.list({ limit: 200 })).length;
+            if (count === 0) {
+                toast(t('gov.ledgerEmpty'));
+                return;
+            }
+            const confirmed = await confirmDangerous({
+                text: t('confirm.ledgerClearText', { count }),
+                danger: t('confirm.ledgerClearDanger'),
+                okButton: t('popup.confirmClear'),
+            });
+            if (!confirmed) return;
+            await RT.govLog.clear();
+            ledgerRows.innerHTML = `<tr><td colspan="4">${esc(t('gov.ledgerEmpty'))}</td></tr>`;
+            toast(t('gov.ledgerCleared'), 'success');
+        } catch (error) {
+            toast(String(error.message || error), 'error');
         }
     });
 

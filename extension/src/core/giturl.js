@@ -54,6 +54,87 @@ export function classifyUrl(url) {
 }
 
 /**
+ * 归一化仓库输入（安装入口容错增强）：
+ * - `owner/repo` 简写 → https://github.com/owner/repo
+ * - `gh:owner/repo` / `github:owner/repo` → https://github.com/owner/repo
+ *   `gitee:owner/repo` → https://gitee.com/owner/repo
+ *   `gitlab:owner/repo` → https://gitlab.com/owner/repo
+ * - GitHub/Gitee 仓库页面 URL（/tree/...、/blob/... 等）→ 仓库根 https URL
+ *   （GitLab 子组路径有歧义，页面 URL 归一化不处理 gitlab.com）
+ * 只对「无协议头的短写」与「已知托管站的页面 URL」做转换；scp/ssh 形态含 @，不进这里。
+ * @param {string} input
+ * @returns {{ url: string, changed: boolean, note: string }} changed=false 时 note 为空串
+ */
+export function normalizeRepoInput(input) {
+    const raw = String(input || '').trim();
+    if (!raw) return { url: raw, changed: false, note: '' };
+
+    // 前缀短写（gh:/gitee:/gitlab:/github: 后接 owner/repo；排除带 @ 与协议头的形态）
+    const prefix = /^(gh|github|gitee|gitlab):([^/\s].*)$/i.exec(raw);
+    if (prefix && !raw.includes('@') && !/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+        const host = { gh: 'github.com', github: 'github.com', gitee: 'gitee.com', gitlab: 'gitlab.com' }[prefix[1].toLowerCase()];
+        const path = prefix[2].trim().replace(/\/+$/, '');
+        if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(path)) {
+            const url = `https://${host}/${path}`;
+            return { url, changed: true, note: `已识别为 ${host} 仓库：${url}` };
+        }
+    }
+
+    // 裸 owner/repo（无协议头、无 @）→ GitHub
+    if (!raw.includes('://') && !raw.includes('@') && /^[\w.-]+\/[\w.-]+$/.test(raw)) {
+        const url = `https://github.com/${raw}`;
+        return { url, changed: true, note: `已识别为 GitHub 仓库：${url}` };
+    }
+
+    // 已知托管站的仓库页面 URL → 仓库根
+    if (/^https?:\/\//i.test(raw)) {
+        try {
+            const parsed = new URL(raw);
+            const host = parsed.host.toLowerCase();
+            const known = host === 'github.com' || host === 'gitee.com'
+                || host.endsWith('.github.com') || host.endsWith('.gitee.com');
+            if (known) {
+                const segments = parsed.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+                    .replace(/\.git$/, '').split('/').filter(Boolean);
+                if (segments.length >= 3) {
+                    const url = `${parsed.protocol}//${parsed.host}/${segments[0]}/${segments[1]}`;
+                    return { url, changed: true, note: `已从仓库页面地址提取仓库根：${url}` };
+                }
+            }
+        } catch { /* 非法 URL 原样返回 */ }
+    }
+
+    return { url: raw, changed: false, note: '' };
+}
+
+/**
+ * 克隆地址 → 仓库网页地址（「↗ 主页」链接用）。
+ * https://host/owner/repo(.git) → 去 .git；git@host:owner/repo(.git) → https://host/owner/repo。
+ * 解析失败返回 null。
+ * @param {string} url
+ * @returns {string | null}
+ */
+export function repoWebUrlFromClone(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return null;
+    const scp = /^[^@/]+@([^:/]+):(.+)$/.exec(raw);
+    if (scp) {
+        const path = scp[2].replace(/\.git$/, '').replace(/\/+$/, '');
+        return /^[\w.-]+\/[\w.-]+$/.test(path) ? `https://${scp[1]}/${path}` : null;
+    }
+    if (!/^https?:\/\//i.test(raw)) return null;
+    try {
+        const parsed = new URL(raw);
+        const segments = parsed.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+            .replace(/\.git$/, '').split('/').filter(Boolean);
+        if (segments.length < 2) return null;
+        return `${parsed.protocol}//${parsed.host}/${segments[0]}/${segments[1]}`;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * 面向安装页的通道提示文案（按运行模式合成）。
  * @param {string} url 仓库地址
  * @param {{ mode: 'server'|'pure', systemGitAvailable?: boolean }} ctx 运行上下文

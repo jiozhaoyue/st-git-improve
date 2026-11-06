@@ -16,12 +16,35 @@
     min-width: 120px;
 }
 
-/* 复选/单选不吃 flex 拉伸（否则渲染成 120px 宽的怪异白框） */
+/* 复选/单选不吃 flex 拉伸；尺寸必须与宿主对齐（宿主把 checkbox 设计成
+   --mainFontSize 正方形 + appearance:none 自绘勾，之前写 width:auto 把宽度压没了，
+   渲染成竖条怪块——这里显式还原宿主正方形尺寸）。
+   宿主把 checkbox 设为 display:grid（块级）→ 在 label 里独占一行、与文字分行；
+   这里恢复 inline-grid：内部 grid 布局（勾图标居中）不变，外部回到行内。 */
 .stgi-row input[type="checkbox"],
 .stgi-row input[type="radio"] {
     flex: 0 0 auto;
     min-width: 0;
-    width: auto;
+    width: var(--mainFontSize, 14px);
+    height: var(--mainFontSize, 14px);
+}
+
+.stgi-row input[type="checkbox"] {
+    display: inline-grid;
+    vertical-align: middle;
+}
+
+/* label 内 checkbox 左列 + 文本右列：换行文本对齐文字起点，不绕回 checkbox 下方 */
+.stgi-row label {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    flex: 1 1 auto;
+}
+
+.stgi-row label input[type="checkbox"],
+.stgi-row label input[type="radio"] {
+    margin-top: 1px;
 }
 
 .stgi-table {
@@ -37,6 +60,27 @@
     text-align: left;
     vertical-align: top;
     word-break: break-all;
+}
+
+/* 表头不断行（窄抽屉里「版本/远端」曾被竖排截断）；名称列整词优先换行 */
+.stgi-table th {
+    white-space: nowrap;
+}
+
+.stgi-table td:first-child {
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+/* 名称主名不断行（nowrap 让表格 auto 布局按整名分配列宽；备注/来源行仍允许断） */
+.stgi-name {
+    white-space: nowrap;
+}
+
+.stgi-repo-link {
+    margin-left: 3px;
+    text-decoration: none;
+    font-weight: bold;
 }
 
 .stgi-badge {
@@ -145,7 +189,11 @@
 
 .stgi-zone-title {
     font-weight: bold;
-    margin: 2px 0 6px 0;
+    font-size: 1.05em;
+    margin: 4px 0 8px 0;
+    padding: 2px 0 2px 8px;
+    /* 豁免: 分区标题左强调条用主题引用色，无对应专用变量 */
+    border-left: 3px solid var(--SmartThemeQuoteColor, #4a6da7);
 }
 
 /* 分区状态摘要行（D4-1 之二）：整行可点，悬停高亮引导跳转 */
