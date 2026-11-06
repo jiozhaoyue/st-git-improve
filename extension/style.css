@@ -106,9 +106,9 @@
     border: 1px solid currentColor;
 }
 
-.stgi-badge.bad { color: #ff6b6b; } /* 豁免: 语义状态色(错误)，四宿主无语义色主题变量 */
-.stgi-badge.warn { color: #f4b942; } /* 豁免: 语义状态色(警告)，四宿主无语义色主题变量 */
-.stgi-badge.good { color: #6bcb77; } /* 豁免: 语义状态色(成功)，四宿主无语义色主题变量 */
+.stgi-badge.bad { color: #ff6b6b; background: rgba(255, 107, 107, 0.13); } /* 豁免: 语义状态色(错误)，四宿主无语义色主题变量；半透明同色底提升亮色主题可读性 */
+.stgi-badge.warn { color: #f4b942; background: rgba(244, 185, 66, 0.15); } /* 豁免: 语义状态色(警告)，四宿主无语义色主题变量 */
+.stgi-badge.good { color: #6bcb77; background: rgba(107, 203, 119, 0.15); } /* 豁免: 语义状态色(成功)，四宿主无语义色主题变量 */
 
 .stgi-btn {
     cursor: pointer;
@@ -183,7 +183,13 @@
 .stgi-kv-v.bad { color: #ff6b6b; } /* 豁免: 语义状态色(错误)，四宿主无语义色主题变量 */
 .stgi-kv-v.warn { color: #f4b942; } /* 豁免: 语义状态色(警告)，四宿主无语义色主题变量 */
 
-/* 安装页通道提示着色 */
+/* 安装页通道提示着色（左强调条 + 中性底条：亮色宿主主题下裸色字对比度不足，加底衬托） */
+.stgi-hint-ok, .stgi-hint-err, .stgi-hint-warn {
+    padding: 4px 8px;
+    border-left: 3px solid currentColor;
+    background: rgba(127, 127, 127, 0.12);
+    border-radius: 4px;
+}
 .stgi-hint-ok { color: #6bcb77; } /* 豁免: 语义状态色(成功)，四宿主无语义色主题变量 */
 .stgi-hint-err { color: #ff6b6b; } /* 豁免: 语义状态色(错误)，四宿主无语义色主题变量 */
 .stgi-hint-warn { color: #f4b942; } /* 豁免: 语义状态色(警告)，四宿主无语义色主题变量 */
