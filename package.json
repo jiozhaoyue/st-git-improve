@@ -6,7 +6,8 @@
     "scripts": {
         "test": "node --test test/*.test.js",
         "check": "node scripts/ci-check.mjs",
-        "standalone": "node standalone/serve.cjs"
+        "standalone": "node standalone/serve.cjs",
+        "verify": "node scripts/verify-all.mjs"
     },
     "engines": {
         "node": ">=18"
