@@ -70,7 +70,7 @@ export async function cloneToMemory({ url, branch, auth, depth = 1, onProgress, 
         onProgress,
         onAuth: () => (auth ? { username: auth.username, password: auth.password } : {}),
         onAuthFailure: () => {
-            const error = new Error('认证失败：请在「账号」页确认该站点的凭据有效（私有仓库需要 PAT）');
+            const error = new Error('认证失败：请在「账号与设置」确认该站点的凭据有效（私有仓库需要 PAT）');
             // @ts-ignore
             error.authFailure = true;
             throw error;

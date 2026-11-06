@@ -50,11 +50,11 @@ export async function preflightAccessible(repoUrl, auth, { fetchImpl } = {}) {
             status: 404,
             note: auth
                 ? '仓库不存在或该账号无权访问（404）——确认仓库地址与账号权限'
-                : '仓库不存在或为私有仓库（404）——私有仓库请先在「账号」页登录该站点',
+                : '仓库不存在或为私有仓库（404）——私有仓库请先在「账号与设置」登录该站点',
         };
     }
     if (info.reasonKey === 'remote.err.http' && info.status === 401) {
-        return { ok: false, status: 401, note: '凭据无效（401）——请到「账号」页更新该站点凭据' };
+        return { ok: false, status: 401, note: '凭据无效（401）——请到「账号与设置」更新该站点凭据' };
     }
     if (info.reasonKey === 'remote.err.unsupportedSite') {
         return { ok: null, note: '未知站点类型，跳过预检' };
@@ -76,7 +76,7 @@ export async function pureInstall({ url, branch, target = 'extension', replace =
     const credential = await accounts.credentialsFor(url);
     const auth = credential?.auth || null;
     if (!auth) {
-        log('该站点没有已保存账号 —— 按公开仓库尝试（私有仓库请先在「账号」页登录）');
+        log('该站点没有已保存账号 —— 按公开仓库尝试（私有仓库请先在「账号与设置」登录）');
     }
 
     // 预检（API 支持 CORS，可提前给出清晰错误）

@@ -179,7 +179,7 @@ export function channelHint(url, ctx) {
             };
         }
         return {
-            text: `${cls.label}——浏览器内克隆（isomorphic-git，凭据来自「账号」页），成功后交宿主原生安装。`,
+            text: `${cls.label}——浏览器内克隆（isomorphic-git，凭据来自「账号与设置」），成功后交宿主原生安装。`,
             level: 'ok',
         };
     }
