@@ -202,6 +202,15 @@ async function fillEnv(card) {
     const me = await fetchJsonBounded('/api/users/me');
     const handle = String(me?.handle || me?.name || '');
     if (handle) addEnvRow(card, t('env.currentUser'), handle);
+    // 浏览器存储用量（估算值；不支持或失败就不显示这一行）
+    if (navigator.storage?.estimate) {
+        try {
+            const est = await navigator.storage.estimate();
+            const usage = est.usage != null ? (est.usage / 1024 / 1024).toFixed(1) : '?';
+            const quota = est.quota != null ? (est.quota / 1024 / 1024).toFixed(0) : '?';
+            addEnvRow(card, t('env.storageUsage'), t('env.storageUsageValue', { usage, quota }));
+        } catch { /* 估算不可用 */ }
+    }
     addEnvRow(card, t('env.probeAt'), new Date(cap?.probeAt || Date.now()).toLocaleTimeString());
 }
 
@@ -485,7 +494,10 @@ function buildInstallEntry(hooks) {
             <div class="stgi-note" data-role="channelHint" style="display:none"></div>
             <div class="stgi-row">
                 <input data-role="url" placeholder="${esc(t('ext.urlPlaceholder'))}" style="flex:3 1 260px" />
-                <input data-role="branch" placeholder="${esc(t('ext.branchPlaceholder'))}" style="flex:0 1 120px" list="stgi-branch-list" />
+                <button class="stgi-btn" data-role="paste" title="${esc(t('ext.pasteTitle'))}">${esc(t('ext.paste'))}</button>
+            </div>
+            <div class="stgi-row">
+                <input data-role="branch" placeholder="${esc(t('ext.branchPlaceholder'))}" style="flex:1 1 120px" list="stgi-branch-list" />
                 <datalist id="stgi-branch-list" data-role="branchList"></datalist>
                 <select data-role="target" style="flex:0 0 150px">
                     <option value="extension">${esc(t('ext.targetExtension'))}</option>
@@ -527,6 +539,23 @@ function buildInstallEntry(hooks) {
     }
     q('url').addEventListener('input', updateChannelHint);
     q('url').addEventListener('blur', applyNormalization);
+
+    // 粘贴（clipboard API；授权失败明确提示，不静默）
+    q('paste').addEventListener('click', async () => {
+        try {
+            const text = String(await navigator.clipboard.readText() || '').trim();
+            if (!text) {
+                toast(t('ext.clipboardEmpty'));
+                return;
+            }
+            q('url').value = text;
+            applyNormalization();
+            updateChannelHint();
+            q('url').dispatchEvent(new Event('input', { bubbles: true }));
+        } catch (error) {
+            toast(t('ext.clipboardFailed', { message: String(error?.message || error) }), 'error');
+        }
+    });
 
     // 分支下拉（D3-1 #8 站点 API）：地址变化后拉取远端分支列表（失败静默，不阻塞输入；
     // 公开仓库无需凭据，私有仓库用该站点默认账号 token）
@@ -1045,9 +1074,10 @@ function buildGovernanceZone(hooks) {
                 return;
             }
             for (const entry of actions) {
+                const badgeCls = LEDGER_BADGE[entry.action] || '';
                 ledgerRows.append(el(`<tr>
                     <td>${esc(new Date(entry.ts).toLocaleString('zh-CN', { hour12: false }))}</td>
-                    <td>${esc(t(`ledger.action.${entry.action}`))}</td>
+                    <td><span class="stgi-badge${badgeCls ? ` ${badgeCls}` : ''}">${esc(t(`ledger.action.${entry.action}`))}</span></td>
                     <td>${esc(entry.name || '')}</td>
                     <td>${esc(entry.detail || '—')}</td>
                 </tr>`));
@@ -1173,6 +1203,9 @@ async function confirmDangerous(options) {
 
 // ---------------------------------------------------------------- 面板装配（总览 + 三区；D4-1/D4-2）
 
+/** 台账动作徽标着色（disable/enable/uninstall/dedupClean/move；未列出的不着色）。 */
+const LEDGER_BADGE = { disable: 'warn', enable: 'good', uninstall: 'bad', dedupClean: 'warn' };
+
 /** 分区骨架（同页纵向分区，D4-2；非旧五页签）。 */
 function zoneWrap(zoneKey, title) {
     const box = el(`<section class="stgi-section stgi-zone" data-zone="${esc(zoneKey)}">
@@ -1256,22 +1289,26 @@ function buildQuickActions(root, hooks) {
     applyGate(box.querySelector('[data-act="quickUpdateAll"]'), can('update', RT.cap));
     applyGate(box.querySelector('[data-act="quickFullScan"]'), fullScanGate());
 
-    // 全部更新（全局批量动作，C-1 唯一入口）：顺序更新全部登记来源的扩展
+    // 全部更新（全局批量动作，C-1 唯一入口）：顺序更新全部登记来源的扩展。
+    // 每个更新 = 删旧目录重装（D9-3 不可恢复语义）→ 批量动作前置强确认。
     box.querySelector('[data-act="quickUpdateAll"]').addEventListener('click', async event => {
         const button = event.target;
+        const installs = Object.entries(RT.store.getInstalls());
+        if (installs.length === 0) {
+            toast(t('quick.nothingRegistered'), 'error');
+            return;
+        }
+        const confirmed = await confirmDangerous({
+            text: t('confirm.updateAllText', { count: installs.length }),
+            danger: t('confirm.updateAllDanger'),
+            okButton: t('popup.confirmUpdate'),
+        });
+        if (!confirmed) return;
         button.disabled = true;
         quickState.textContent = t('quick.updating');
         quickLog.style.display = '';
         quickLog.innerHTML = '';
         const append = (line, kind = 'plain') => appendLogLine(quickLog, line, kind);
-        const installs = Object.entries(RT.store.getInstalls());
-        if (installs.length === 0) {
-            quickState.textContent = '';
-            append(t('quick.nothingRegistered'), 'warn');
-            toast(t('quick.nothingRegistered'), 'error');
-            applyGate(button, can('update', RT.cap));
-            return;
-        }
         append(t('quick.updateTotal', { count: installs.length }));
         let okCount = 0;
         const failed = [];

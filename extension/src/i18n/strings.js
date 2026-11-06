@@ -48,6 +48,8 @@ export const strings = {
     'env.authorityAbsent': '未安装（管理功能灰化）',
     'env.currentUser': '当前用户',
     'env.probeAt': '探测时间',
+    'env.storageUsage': '浏览器存储用量',
+    'env.storageUsageValue': '约 {usage} MB / 配额 {quota} MB',
 
     // ---- 总览：分区状态摘要（D4-1 之二；点击跳分区） ----
     'overview.zones': '分区入口',
@@ -81,6 +83,10 @@ export const strings = {
     'ext.title': '我的扩展',
     'ext.installNote': '安装 git 仓库为扩展：先浏览器侧预检（私有仓库请在「账号与设置」登录该站点），再交宿主原生安装通道。',
     'ext.urlPlaceholder': '仓库地址 https://...',
+    'ext.paste': '粘贴',
+    'ext.pasteTitle': '粘贴剪贴板内容到仓库地址（自动识别简写/页面地址）',
+    'ext.clipboardEmpty': '剪贴板是空的',
+    'ext.clipboardFailed': '读取剪贴板失败：{message}（需浏览器授权）',
     'ext.branchPlaceholder': '分支（可选）',
     'ext.targetExtension': '用户扩展',
     'ext.targetGlobal': '全局扩展',
@@ -119,6 +125,8 @@ export const strings = {
     'confirm.dedupDanger': '纯前端无法核实本地改动——若有未推送的修改将一并丢失，不可恢复。',
     'confirm.ledgerClearText': '清空治理台账：将删除全部 {count} 条历史记录。',
     'confirm.ledgerClearDanger': '不可恢复：操作留痕删除后无法找回。',
+    'confirm.updateAllText': '全部更新 {count} 个登记来源的扩展：每个都会删除本地旧版目录后重装最新版。',
+    'confirm.updateAllDanger': '扩展目录内的本地改动不会被备份，不可恢复。只想更新单个扩展请用「我的扩展」里的行内更新。',
 
     // ---- 分区二：治理与清理（D5-2 停用/启用/去重/台账；D3-4 常显灰化） ----
     'gov.title': '治理与清理',
