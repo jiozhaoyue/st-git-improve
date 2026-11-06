@@ -2,7 +2,10 @@
 // t(key, params) 缺键：开发态 console.warn + 渲染裸键名（便于发现漏键）；
 // params 以 {name} 占位替换。
 
-import { strings } from './strings.js';
+// 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏）——相对 import
+// 不继承调用方的 ?v= 参数，strings.js 必须带自己的版本参数。
+const V = '0.9.3';
+const { strings } = await import(`./strings.js?v=${V}`);
 
 let warnMissing = true;
 
