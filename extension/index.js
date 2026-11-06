@@ -97,11 +97,9 @@ function appendLogLine(log, line, kind = 'plain') {
     log.scrollTop = log.scrollHeight;
 }
 
-/** 在日志区追加「刷新页面 / 复制日志 / 收起日志」按钮组（安装/更新完成后面板文件已落盘，刷新即生效）。 */
-function appendRefreshButton(log) {
+/** 日志区顶部常驻「复制日志」按钮（显示日志时就绪——排障正发生在失败场景）。 */
+function appendCopyLogButton(log) {
     const row = el('<div class="stgi-row"></div>');
-    const refreshButton = el(`<button class="stgi-btn" title="${esc(t('panel.refreshPageTitle'))}">${esc(t('panel.refreshPage'))}</button>`);
-    refreshButton.addEventListener('click', () => location.reload());
     const copyButton = el(`<button class="stgi-btn" title="${esc(t('panel.copyLogTitle'))}">${esc(t('panel.copyLog'))}</button>`);
     copyButton.addEventListener('click', async () => {
         try {
@@ -112,12 +110,21 @@ function appendRefreshButton(log) {
             toast(String(error?.message || error), 'error');
         }
     });
+    row.append(copyButton);
+    log.prepend(row);
+}
+
+/** 在日志区追加「刷新页面 / 收起日志」按钮组（安装/更新完成后面板文件已落盘，刷新即生效）。 */
+function appendRefreshButton(log) {
+    const row = el('<div class="stgi-row"></div>');
+    const refreshButton = el(`<button class="stgi-btn" title="${esc(t('panel.refreshPageTitle'))}">${esc(t('panel.refreshPage'))}</button>`);
+    refreshButton.addEventListener('click', () => location.reload());
     const collapseButton = el(`<button class="stgi-btn" title="${esc(t('panel.collapseLogTitle'))}">${esc(t('panel.collapseLog'))}</button>`);
     collapseButton.addEventListener('click', () => {
         log.style.display = 'none';
         log.innerHTML = '';
     });
-    row.append(refreshButton, copyButton, collapseButton);
+    row.append(refreshButton, collapseButton);
     log.append(el('<div></div>'), row);
 }
 
@@ -748,6 +755,7 @@ function buildInstallEntry(hooks) {
         log.style.display = '';
         const append = (line, kind = 'plain') => appendLogLine(log, line, kind);
         log.innerHTML = '';
+        appendCopyLogButton(log);
         const url = q('url').value.trim();
         try {
             if (url) {
@@ -839,6 +847,7 @@ function buildExtensionsZone(hooks) {
         button.disabled = true;
         zoneLog.style.display = '';
         zoneLog.innerHTML = '';
+        appendCopyLogButton(zoneLog);
         const append = (line, kind = 'plain') => appendLogLine(zoneLog, line, kind);
         try {
             await pureInstall({
@@ -1620,6 +1629,7 @@ function buildQuickActions(root, hooks) {
         quickState.textContent = t('quick.updating');
         quickLog.style.display = '';
         quickLog.innerHTML = '';
+        appendCopyLogButton(quickLog);
         const append = (line, kind = 'plain') => appendLogLine(quickLog, line, kind);
         append(t('quick.updateTotal', { count: installs.length }));
         let okCount = 0;
