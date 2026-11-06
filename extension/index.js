@@ -1871,7 +1871,7 @@ async function mountPanelBlock() {
         const info = tierBadgeInfo(RT.cap);
         badge.className = `stgi-badge ${info.cls}`;
         badge.textContent = info.text;
-        badge.title = t('panel.title');
+        badge.title = t('panel.tierTitle');
     } catch (error) {
         console.error('[st-git-improve] panel render failed:', error);
         body.textContent = '';

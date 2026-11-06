@@ -21,6 +21,7 @@ export const strings = {
     'panel.title': 'Git 源管理',
     'panel.loading': '面板加载中…',
     'panel.renderFailed': '面板渲染失败——请刷新页面重试（详情见控制台）',
+    'panel.tierTitle': '面板运行形态徽标（纯前端 / +Authority / +Authority 管理员）——详情见总览的运行环境卡',
     'panel.refreshPage': '刷新页面（立即生效）',
     'panel.refreshPageTitle': '重载宿主页面，让新装/更新的扩展立即生效',
     'panel.collapseLog': '收起',
