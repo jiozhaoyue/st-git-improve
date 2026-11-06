@@ -5,15 +5,34 @@
 
 const API = '/api/plugins/st-git-improve';
 const PROBE_TIMEOUT_MS = 4000;
+const HOST_API_TIMEOUT_MS = 15000;      // 常规宿主通道调用超时（L1-MR-7 有界等待）
+const HOST_INSTALL_TIMEOUT_MS = 180000; // 安装=服务端 git 克隆，可能数十秒，超时放宽
 
 let csrfCache = null;
+let csrfPromise = null;
+
 export async function getCsrfToken() {
-    if (!csrfCache) {
-        const response = await fetch('/csrf-token');
-        const data = await response.json().catch(() => ({}));
-        csrfCache = String(data?.token || '');
+    if (csrfCache) return csrfCache;
+    if (!csrfPromise) {
+        // 有界等待 + 失败不缓存（空 token 缓存会让后续所有写请求 403 到刷新页面为止）
+        csrfPromise = (async () => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5000);
+            try {
+                const response = await fetch('/csrf-token', { signal: controller.signal });
+                const data = await response.json().catch(() => ({}));
+                const token = String(data?.token || '');
+                if (token) csrfCache = token;
+                return token;
+            } catch {
+                return '';
+            } finally {
+                clearTimeout(timer);
+                csrfPromise = null;
+            }
+        })();
     }
-    return csrfCache;
+    return csrfPromise;
 }
 
 /** 服务端插件通道（失败即抛错，与旧版面板语义一致）。 */
@@ -78,6 +97,8 @@ export async function detectMode({ force = false } = {}) {
 
 async function hostApi(path, options = {}) {
     const init = { headers: {}, ...options };
+    const timeoutMs = init.timeoutMs;
+    delete init.timeoutMs;
     if (init.body !== undefined && !(init.body instanceof FormData)) {
         init.headers['Content-Type'] = 'application/json';
         init.body = JSON.stringify(init.body);
@@ -86,7 +107,15 @@ async function hostApi(path, options = {}) {
         init.method = init.method || (init.body ? 'POST' : 'GET');
         init.headers['X-CSRF-Token'] = await getCsrfToken();
     }
-    const response = await fetch(path, init);
+    // 有界等待（L1-MR-7）：宿主通道调用默认 15s；安装（服务端克隆）由调用方放宽
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Number(timeoutMs) || HOST_API_TIMEOUT_MS);
+    let response;
+    try {
+        response = await fetch(path, { ...init, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
     const text = await response.text();
     let data = null;
     try {
@@ -101,7 +130,7 @@ async function hostApi(path, options = {}) {
 export async function hostNativeInstall({ authedUrl, global: isGlobal, branch }) {
     const body = { url: authedUrl, global: Boolean(isGlobal) };
     if (branch) body.branch = branch;
-    const result = await hostApi('/api/extensions/install', { body });
+    const result = await hostApi('/api/extensions/install', { body, timeoutMs: HOST_INSTALL_TIMEOUT_MS });
     return result;
 }
 
