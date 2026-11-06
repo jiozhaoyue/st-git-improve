@@ -164,8 +164,8 @@ async function case1(page) {
         assert.ok(visible, `分区 ${zone} 可见`);
     }
     record(key, 'pass', '总览三件套 + 三区全部可见');
-    // 快捷动作三件套
-    for (const act of ['quickUpdateAll', 'quickFullScan', 'quickSelfCheck']) {
+    // 快捷动作五件套（0.9.3 新增导出/导入全部数据）
+    for (const act of ['quickUpdateAll', 'quickFullScan', 'quickSelfCheck', 'quickExportAll', 'quickImportAll']) {
         assert.equal(await page.locator(`[data-act="${act}"]`).count(), 1, `快捷动作 ${act} 存在且唯一`);
     }
     const fullScanEnabled = await page.locator('[data-act="quickFullScan"]').isEnabled();
