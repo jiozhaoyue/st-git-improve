@@ -97,17 +97,27 @@ function appendLogLine(log, line, kind = 'plain') {
     log.scrollTop = log.scrollHeight;
 }
 
-/** 在日志区追加「刷新页面 / 收起日志」按钮组（安装/更新完成后面板文件已落盘，刷新即生效）。 */
+/** 在日志区追加「刷新页面 / 复制日志 / 收起日志」按钮组（安装/更新完成后面板文件已落盘，刷新即生效）。 */
 function appendRefreshButton(log) {
     const row = el('<div class="stgi-row"></div>');
     const refreshButton = el(`<button class="stgi-btn" title="${esc(t('panel.refreshPageTitle'))}">${esc(t('panel.refreshPage'))}</button>`);
     refreshButton.addEventListener('click', () => location.reload());
+    const copyButton = el(`<button class="stgi-btn" title="${esc(t('panel.copyLogTitle'))}">${esc(t('panel.copyLog'))}</button>`);
+    copyButton.addEventListener('click', async () => {
+        try {
+            const text = [...log.querySelectorAll('.stgi-log-line')].map(n => n.textContent || '').join('\n');
+            await navigator.clipboard.writeText(text);
+            toast(t('panel.logCopied'), 'success');
+        } catch (error) {
+            toast(String(error?.message || error), 'error');
+        }
+    });
     const collapseButton = el(`<button class="stgi-btn" title="${esc(t('panel.collapseLogTitle'))}">${esc(t('panel.collapseLog'))}</button>`);
     collapseButton.addEventListener('click', () => {
         log.style.display = 'none';
         log.innerHTML = '';
     });
-    row.append(refreshButton, collapseButton);
+    row.append(refreshButton, copyButton, collapseButton);
     log.append(el('<div></div>'), row);
 }
 

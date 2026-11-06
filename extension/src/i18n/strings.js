@@ -26,6 +26,9 @@ export const strings = {
     'panel.refreshPageTitle': '重载宿主页面，让新装/更新的扩展立即生效',
     'panel.collapseLog': '收起',
     'panel.collapseLogTitle': '任务已完成，收起日志区',
+    'panel.copyLog': '复制日志',
+    'panel.copyLogTitle': '复制日志内容到剪贴板（排障用）',
+    'panel.logCopied': '日志已复制',
 
     // ---- 官方 Popup（D9-3 强确认基线） ----
     'popup.ok': '确认',
