@@ -1,8 +1,9 @@
-// ST Git Improve — front-end panel（总览 + 三区新 IA，施工图见任务 design.md §2）。
+// ST Git Improve — front-end panel（总览 + sticky 分区入口 + 三区 + 使用帮助，施工图见任务 design.md §2）。
 // 唯一 UI 注入点 = 扩展设置抽屉（D6-5）；面板外零按钮、零注入（D6-6）。
-// 能力态三维（宿主通道 × Authority × 管理员）驱动三态徽标与逐项灰化（D3-3/D3-4/D9-1）。
+// 能力态三维（宿主通道 × Authority × 管理员）驱动三态徽标与逐项灰化（D3-3/D3-4/D9-1），
+// 抽屉标题行常显三态徽标（收起也能看到运行态）。
 // 数据持久化铁律（C-2）：凭据/台账/来源登记的事实源 = 宿主 extension_settings；
-// localStorage 仅作写失败兜底缓存，永不为事实源。
+// localStorage 仅作写失败兜底缓存与 UI 偏好，永不为事实源。
 
 // 模块缓存破坏：宿主以 HTTP 缓存扩展模块文件，更新扩展后旧模块可能继续生效。
 // 所有跨模块 import 带上版本参数，发版时与 manifest.json 的 version 同步修改。
