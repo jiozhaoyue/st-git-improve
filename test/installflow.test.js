@@ -24,7 +24,7 @@ describe('installflow: preflightAccessible（复用站点 API 探测链）', () 
             fetchImpl: async () => jsonResponse({}, 404),
         });
         assert.equal(result.ok, false);
-        assert.match(result.note, /私有仓库请先在「账号」页登录/);
+        assert.match(result.note, /私有仓库请先在「账号与设置」登录/);
     });
 
     it('有凭据 404 → 提示确认仓库地址与账号权限', async () => {
