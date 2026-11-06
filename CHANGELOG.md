@@ -94,8 +94,8 @@
 - spec 沉淀：`.trellis/spec/guides/instance-deploy-verify.md` 新增「standalone 壳验证流程」
   与「宿主 UI 契约」两节（popup div 按钮 / checkbox 尺寸纪律 / 表格列宽 / 候选端点探测 /
   CI 文案口径）。
-- 单测 107/107（+24）；CI 六项自查通过；全部改动经 standalone 壳截图/交互验证；
-  375px 窄视口实测无水平溢出。
+- 单测 112/112（+29）；CI 六项自查通过；全部改动经 standalone 壳截图/交互验证
+  （`verify-all.mjs` 一键串跑 8 步全 PASS）；375px 窄视口实测无水平溢出。
 
 ## [0.9.2] - 2026-10-31
 
