@@ -41,6 +41,7 @@ function restore(backup) {
 // 步骤定义：name = 脚本名（不带 .mjs），needsInject = 是否需要注入测试数据
 const STEPS = [
     { name: 'shot-standalone', args: ['verifyall'], needsInject: false },
+    { name: 'shot-standalone', args: ['verifyall-multi', '--multi'], needsInject: false },
     { name: 'check-input-normalize', needsInject: false },
     { name: 'check-register', needsInject: false },
     { name: 'check-iter2-interactions', needsInject: true },
