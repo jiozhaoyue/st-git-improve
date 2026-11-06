@@ -33,17 +33,17 @@ try {
     await page.waitForSelector('[data-role="envCard"]', { timeout: 15000 });
     await page.waitForTimeout(1500);
 
-    // 总览三件套
-    const block = page.locator('.stgi-block');
+    // 临时放开宿主固定高度（内容自适应），避免 element 截图底部大段空白；截图不改文件
     await page.evaluate(() => {
-        const el = document.querySelector('.stgi-panel');
-        if (el) el.style.scrollBehavior = 'auto';
+        document.querySelectorAll('.inline-drawer-content, .drawer-content')
+            .forEach(node => { node.style.height = 'auto'; node.style.maxHeight = 'none'; });
     });
-    await page.evaluate(() => document.querySelector('.stgi-panel')?.scrollIntoView({ block: 'start' }));
     await page.waitForTimeout(300);
-    // 块内滚动：viewport 视口内的面板可见部分即总览首屏
-    await page.screenshot({ path: path.join(OUT_DIR, 'panel-overview.png') });
-    console.log('已拍 panel-overview.png');
+
+    // element 截图：只拍面板区块（无宿主 chrome/空白，README 图紧凑）
+    const block = page.locator('.stgi-block');
+    await block.screenshot({ path: path.join(OUT_DIR, 'panel-overview.png') });
+    console.log('已拍 panel-overview.png（element 截图）');
     await context.close();
 } finally {
     await browser.close();
