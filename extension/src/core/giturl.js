@@ -86,6 +86,12 @@ export function normalizeRepoInput(input) {
         return { url, changed: true, note: `已识别为 GitHub 仓库：${url}` };
     }
 
+    // 无协议的 host/path 形态（如 github.com/a/b、git.example.com/a/b）→ 补 https://
+    if (!raw.includes('://') && !raw.includes('@') && /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}\/\S+$/i.test(raw)) {
+        const url = `https://${raw}`;
+        return { url, changed: true, note: `已补全协议：${url}` };
+    }
+
     // 已知托管站的仓库页面 URL → 仓库根
     if (/^https?:\/\//i.test(raw)) {
         try {

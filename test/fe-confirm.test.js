@@ -5,12 +5,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { strings } from '../extension/src/i18n/strings.js';
 
-// D9-3 强确认白名单：卸载 / 删重复副本 / 更新（删旧重装）。
+// D9-3 强确认白名单：卸载 / 删重复副本 / 更新（删旧重装）/ 全部更新（批量删旧重装）/ 清空台账。
 // 停用/启用/迁移为可逆操作——必须没有强确认键（防止确认疲劳回归）。
 const STRONG_CONFIRM_PAIRS = [
     ['confirm.updateText', 'confirm.updateDanger'],
     ['confirm.uninstallText', 'confirm.uninstallDanger'],
     ['confirm.dedupText', 'confirm.dedupDanger'],
+    ['confirm.updateAllText', 'confirm.updateAllDanger'],
+    ['confirm.ledgerClearText', 'confirm.ledgerClearDanger'],
 ];
 
 test('强确认键成对存在且非空（D9-3 后果说明）', () => {

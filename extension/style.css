@@ -67,6 +67,11 @@
     white-space: nowrap;
 }
 
+/* 行悬停高亮（长列表扫行更省眼） */
+.stgi-table tbody tr:hover {
+    background: var(--SmartThemeBlurTintColor, #333);
+}
+
 .stgi-table td:first-child {
     word-break: normal;
     overflow-wrap: anywhere;

@@ -516,6 +516,24 @@ function buildInstallEntry(hooks) {
     const q = role => section.querySelector(`[data-role="${role}"]`);
     applyGate(q('go'), can('install', RT.cap));
 
+    // 安装目标记忆（UI 偏好走 localStorage——丢失无损失，不属于 C-2 事实源范畴）
+    const PREFS_KEY = 'st_git_improve_ui_prefs';
+    const loadPrefs = () => {
+        try {
+            return JSON.parse(window.localStorage.getItem(PREFS_KEY) || '{}');
+        } catch {
+            return {};
+        }
+    };
+    const savePrefs = patch => {
+        try {
+            window.localStorage.setItem(PREFS_KEY, JSON.stringify({ ...loadPrefs(), ...patch }));
+        } catch { /* 存储不可用不影响功能 */ }
+    };
+    const targetSelect = q('target');
+    targetSelect.value = loadPrefs().installTarget === 'global' ? 'global' : 'extension';
+    targetSelect.addEventListener('change', () => savePrefs({ installTarget: targetSelect.value }));
+
     // 通道可视化 + 输入归一化：短写（owner/repo、gh:…）与仓库页面 URL 即时识别——
     // 输入期间只在提示行预告，失焦时才回填输入框（不打断输入）；提交前再归一化一次。
     const hint = q('channelHint');
@@ -800,7 +818,7 @@ function buildExtensionsZone(hooks) {
                     <td><span class="stgi-name">${esc(entry.name || '')}</span>${homeLink}${origin ? `<span class="stgi-badge good">${esc(t('ext.updatable'))}</span>` : ''}${originNote}</td>
                     <td>${esc(entry.version || '')}</td>
                     <td data-role="remoteCell">${esc(origin ? t('ext.remoteChecking') : t('ext.remoteUnknown'))}</td>
-                    <td><button class="stgi-btn" data-act="extNeedAuthority" disabled title="${esc(t('cap.reason.needAuthority'))}">${esc(t('ext.needAuthority'))}</button></td>
+                    <td><span class="stgi-note" title="${esc(t('cap.reason.needAuthority'))}">${esc(t('ext.needAuthority'))}</span></td>
                     <td class="stgi-actions-cell"></td>
                 </tr>`);
                 const actionsCell = row.querySelector('.stgi-actions-cell');

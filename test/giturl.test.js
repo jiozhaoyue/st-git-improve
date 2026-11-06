@@ -92,6 +92,14 @@ describe('giturl: normalizeRepoInput（安装入口输入归一化）', () => {
         assert.match(result.note, /github\.com/);
     });
 
+    it('无协议 host/path → 补全 https://', () => {
+        const gh = normalizeRepoInput('github.com/a/b');
+        assert.equal(gh.url, 'https://github.com/a/b');
+        assert.equal(gh.changed, true);
+        const self = normalizeRepoInput('git.example.com/a/b.git');
+        assert.equal(self.url, 'https://git.example.com/a/b.git');
+    });
+
     it('gh:/gitee:/gitlab: 前缀短写 → 对应托管站克隆地址', () => {
         assert.equal(normalizeRepoInput('gh:a/b').url, 'https://github.com/a/b');
         assert.equal(normalizeRepoInput('GH:a/b').url, 'https://github.com/a/b');
