@@ -546,7 +546,8 @@ function buildInstallEntry(hooks) {
             <div class="stgi-note" data-role="channelHint" style="display:none"></div>
             <div class="stgi-note" data-role="repoSummary" style="display:none"></div>
             <div class="stgi-row">
-                <input data-role="url" placeholder="${esc(t('ext.urlPlaceholder'))}" style="flex:3 1 260px" />
+                <input data-role="url" placeholder="${esc(t('ext.urlPlaceholder'))}" style="flex:3 1 260px" list="stgi-url-history" />
+                <datalist id="stgi-url-history" data-role="urlHistory"></datalist>
                 <button class="stgi-btn" data-role="paste" title="${esc(t('ext.pasteTitle'))}">${esc(t('ext.paste'))}</button>
             </div>
             <div class="stgi-row">
@@ -568,6 +569,13 @@ function buildInstallEntry(hooks) {
 
     const q = role => section.querySelector(`[data-role="${role}"]`);
     applyGate(q('go'), can('install', RT.cap));
+
+    // 安装地址历史：登记过的仓库地址进 datalist（重装/换分支方便）
+    const historyUrls = [...new Set(Object.values(RT.store.getInstalls())
+        .map(origin => String(origin?.url || '')).filter(Boolean))];
+    if (historyUrls.length > 0) {
+        q('urlHistory').innerHTML = historyUrls.map(u => `<option value="${esc(u)}"></option>`).join('');
+    }
 
     // 安装目标记忆（UI 偏好走 localStorage——丢失无损失，不属于 C-2 事实源范畴）
     const PREFS_KEY = 'st_git_improve_ui_prefs';
