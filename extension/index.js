@@ -1529,6 +1529,7 @@ function buildHelpSection() {
         ['help.hideQ', 'help.hideA'],
         ['help.staleQ', 'help.staleA'],
         ['help.dataQ', 'help.dataA'],
+        ['help.authorityQ', 'help.authorityA'],
     ];
     const box = el(`<details class="stgi-section stgi-help">
         <summary><b></b></summary>
