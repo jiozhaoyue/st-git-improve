@@ -1002,8 +1002,10 @@ function buildExtensionsZone(hooks) {
                 const homeLink = homeUrl
                     ? ` <a class="stgi-repo-link" href="${esc(homeUrl)}" target="_blank" rel="noopener noreferrer" title="${esc(t('ext.repoHomeTitle'))}">↗</a>`
                     : '';
+                // scope 徽标：同名 local/global 两行靠它区分（重复检测场景）；短文案入徽标，完整说明在 title
+                const scopeBadge = `<span class="stgi-badge${entry.scope === 'global' ? ' good' : ''}" title="${esc(entry.scope === 'global' ? t('gov.scopeGlobalNote') : t('gov.scopeLocalNote'))}">${esc(entry.scope === 'global' ? t('gov.scopeGlobal') : t('gov.scopeLocal'))}</span>`;
                 const row = el(`<tr>
-                    <td><span class="stgi-name">${esc(entry.name || '')}</span>${homeLink}${origin ? `<span class="stgi-badge good">${esc(t('ext.updatable'))}</span>` : ''}${originNote}</td>
+                    <td><span class="stgi-name">${esc(entry.name || '')}</span>${homeLink} ${scopeBadge}${origin ? `<span class="stgi-badge good">${esc(t('ext.updatable'))}</span>` : ''}${originNote}</td>
                     <td>${esc(entry.version || '')}</td>
                     <td data-role="remoteCell">${esc(origin ? t('ext.remoteChecking') : t('ext.remoteUnknown'))}</td>
                     <td><span class="stgi-note" title="${esc(t('cap.reason.needAuthority'))}">${esc(t('ext.needAuthority'))}</span></td>

@@ -166,6 +166,8 @@ export const strings = {
     'gov.disable': '停用',
     'gov.scopeGlobalNote': '全局扩展（所有用户）',
     'gov.scopeLocalNote': '用户扩展',
+    'gov.scopeGlobal': '全局扩展',
+    'gov.scopeLocal': '用户扩展',
     'gov.empty': '未发现任何可治理的扩展',
     'gov.loading': '加载中…',
     'gov.loadFailed': '加载失败：{message}',
