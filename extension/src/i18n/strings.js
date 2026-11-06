@@ -52,6 +52,10 @@ export const strings = {
     'env.probeAt': '探测时间',
     'env.storageUsage': '浏览器存储用量',
     'env.storageUsageValue': '约 {usage} MB / 配额 {quota} MB',
+    'env.copy': '复制环境信息',
+    'env.copyTitle': '复制版本对/能力态/账号统计到剪贴板（排障用）',
+    'env.copied': '环境信息已复制到剪贴板',
+    'env.diagnostic': '环境信息',
 
     // ---- 总览：分区状态摘要（D4-1 之二；点击跳分区） ----
     'overview.zones': '分区入口',
@@ -278,6 +282,8 @@ export const strings = {
     'help.hideA': '停用走宿主设置开关：目录与数据完全不动、刷新后生效、随时可启用。卸载会删除扩展目录及全部文件（不可恢复，需强确认），并自动清理该扩展的来源登记。',
     'help.staleQ': '「失效来源登记」是什么？',
     'help.staleA': '在面板外卸载扩展后，本面板的来源登记会残留。卸载/删除副本时会自动清理；面板外的卸载会在已装列表下方提示一键清理，清理不影响任何扩展本体。',
+    'help.dataQ': '我的凭据和数据存在哪里？',
+    'help.dataA': '凭据与来源登记保存在宿主设置（extension_settings，随服务端 settings.json 持久化，localStorage 仅作写失败兜底）；治理台账同样随宿主设置持久化。「导出全部数据」可把三者合并导出，导入即可迁移到新机器。',
 
     // ---- 通用排版符（语言相关的连接/分隔符，随字典走；1.8 抽键收尾） ----
     'common.listSep': '、',

@@ -204,6 +204,7 @@ function buildEnvCard() {
         <div class="stgi-row stgi-env-head">
             <b>${esc(t('env.title'))}</b>
             <span class="stgi-badge" data-role="tierBadge"></span>
+            <button class="stgi-btn" data-role="envCopy" title="${esc(t('env.copyTitle'))}">${esc(t('env.copy'))}</button>
         </div>
         <div class="stgi-kv" data-role="envRows"></div>
         <div class="stgi-row"><button class="stgi-btn" data-role="envRefresh">${esc(t('env.refresh'))}</button></div>
@@ -218,6 +219,28 @@ function buildEnvCard() {
             console.error('[st-git-improve] env refresh failed:', error);
         } finally {
             button.disabled = false;
+        }
+    });
+    // 复制环境信息（排障用：版本对/能力态/账号统计，纯文本进剪贴板）
+    card.querySelector('[data-role="envCopy"]').addEventListener('click', async () => {
+        try {
+            const cap = RT.cap || {};
+            const snapshot = RT.store.snapshot();
+            const authority = cap.authority || {};
+            const lines = [
+                `${t('panel.title')} ${t('env.diagnostic')}`,
+                `${t('env.panelVersion')}: v${V}`,
+                `${t('env.hostVersion')}: ${card.dataset.hostVersion || '?'}`,
+                `${t('cap.tier.pure')}/${t('cap.tier.authority')}/${t('cap.tier.authorityAdmin')}: ${cap.tier || '?'}`,
+                `${t('env.authority')}: ${authority.present ? `v${authority.version || '?'}` : t('env.authorityAbsent')}`,
+                `${t('env.currentUser')}: ${await (await fetchJsonBounded('/api/users/me'))?.handle || '?'}`,
+                `${t('sum.accStats', { accounts: snapshot.accounts.length, sites: new Set(snapshot.accounts.map(a => siteKeyOf(a.type, a.baseUrl))).size })}`,
+                `${t('env.probeAt')}: ${new Date(cap.probeAt || Date.now()).toLocaleString('zh-CN', { hour12: false })}`,
+            ];
+            await navigator.clipboard.writeText(lines.join('\n'));
+            toast(t('env.copied'), 'success');
+        } catch (error) {
+            toast(String(error?.message || error), 'error');
         }
     });
     return card;
@@ -242,6 +265,7 @@ async function fillEnv(card) {
     card.querySelector('[data-role="envRows"]').innerHTML = '';
     addEnvRow(card, t('env.panelVersion'), `v${V}`, 'good');
     const versionInfo = await fetchJsonBounded('/version');
+    card.dataset.hostVersion = String(versionInfo?.version || '');
     addEnvRow(card, t('env.hostVersion'), versionInfo?.version || t('env.hostVersionUnknown'));
     addEnvRow(card, t('env.browserClone'), t('env.browserCloneValue'), 'good');
     addEnvRow(card, t('env.sshBridge'), t('env.sshBridgeValue'), 'warn');
@@ -486,7 +510,8 @@ function tabAccounts(root) {
 
     q('export').addEventListener('click', () => {
         const blob = new Blob([JSON.stringify(RT.store.snapshot(), null, 2)], { type: 'application/json' });
-        triggerDownload(URL.createObjectURL(blob), 'st-git-improve-accounts.json');
+        const stamp = new Date().toISOString().slice(0, 10);
+        triggerDownload(URL.createObjectURL(blob), `st-git-improve-accounts-${stamp}.json`);
     });
 
     q('import').addEventListener('click', () => q('importFile').click());
@@ -1457,6 +1482,7 @@ function buildHelpSection() {
         ['help.updateQ', 'help.updateA'],
         ['help.hideQ', 'help.hideA'],
         ['help.staleQ', 'help.staleA'],
+        ['help.dataQ', 'help.dataA'],
     ];
     const box = el(`<details class="stgi-section stgi-help">
         <summary><b></b></summary>
