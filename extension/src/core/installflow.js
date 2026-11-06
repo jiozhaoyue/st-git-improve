@@ -111,18 +111,23 @@ export async function pureInstall({ url, branch, target = 'extension', replace =
         log(`浏览器内克隆不可用（${String(error.message || error).slice(0, 120)}）——安装不受影响`);
     }
 
-    let name = repo.repo;
-    if (cloned?.textFile) {
-        const manifestText = cloned.textFile('manifest.json');
-        if (manifestText) {
-            try {
-                const manifest = JSON.parse(manifestText);
-                if (manifest.display_name) name = String(manifest.display_name);
-            } catch {
-                log('manifest.json 不是合法 JSON —— 按仓库名继续');
+    // 目录名恒为仓库名（宿主按 git URL 克隆到 extensions/<repo>）；display_name 只是
+    // manifest 展示字段——**登记名必须用 repo.repo**，用 display_name 会在其与目录名
+    // 不同的扩展上登记错位（行内更新/远端检查按 discover 的扩展名查 installs 查不到）
+    const displayName = (() => {
+        if (cloned?.textFile) {
+            const manifestText = cloned.textFile('manifest.json');
+            if (manifestText) {
+                try {
+                    const manifest = JSON.parse(manifestText);
+                    if (manifest.display_name) return String(manifest.display_name);
+                } catch {
+                    log('manifest.json 不是合法 JSON —— 按仓库名继续');
+                }
             }
         }
-    }
+        return repo.repo;
+    })();
 
     // 主路径：宿主原生安装（服务端克隆，无 CORS 约束）
     const authedUrl = buildAuthedUrl(url, auth);
@@ -153,11 +158,11 @@ export async function pureInstall({ url, branch, target = 'extension', replace =
         throw new Error(`宿主安装失败: ${detail}`);
     }
     log('安装完成，刷新页面后生效');
-    // 来源登记：诊断页据此提供「更新」（以登记的 url/branch 重跑本流程）
+    // 来源登记（固定用仓库目录名，与宿主 discover 的扩展名对齐）：诊断页据此提供「更新」
     try {
-        await accounts.recordInstall(name, { url, branch: branch || '', target, oid: cloned?.oid || '' });
+        await accounts.recordInstall(repo.repo, { url, branch: branch || '', target, oid: cloned?.oid || '' });
     } catch { /* 登记失败不影响安装结果 */ }
-    return { name, oid: cloned?.oid || '', mode: 'host-native', note: result.data?.message || '', cloned };
+    return { name: displayName, registeredName: repo.repo, oid: cloned?.oid || '', mode: 'host-native', note: result.data?.message || '', cloned };
 }
 
 /** 克隆结果打包为 zip 字节（跳过 .git）。 */
