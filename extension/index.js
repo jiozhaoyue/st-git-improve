@@ -438,6 +438,10 @@ function tabAccounts(root) {
     }
 
     q('add').addEventListener('click', async () => {
+        const addButton = q('add');
+        const originalAddText = addButton.textContent;
+        addButton.disabled = true;
+        addButton.textContent = t('acc.adding');
         try {
             const { account } = await RT.store.addAccount({
                 type: typeSelect.value,
@@ -468,6 +472,9 @@ function tabAccounts(root) {
             }
         } catch (error) {
             toast(String(error.message || error), 'error');
+        } finally {
+            addButton.disabled = false;
+            addButton.textContent = originalAddText;
         }
     });
 
@@ -724,6 +731,8 @@ function buildInstallEntry(hooks) {
     q('go').addEventListener('click', async () => {
         const button = q('go');
         button.disabled = true;
+        const originalText = button.textContent;
+        button.textContent = t('ext.installing');
         applyNormalization();
         const log = q('log');
         log.style.display = '';
@@ -768,6 +777,7 @@ function buildInstallEntry(hooks) {
             append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
             toast(String(error.message || error), 'error');
         } finally {
+            button.textContent = originalText;
             applyGate(button, can('install', RT.cap));
         }
     });
