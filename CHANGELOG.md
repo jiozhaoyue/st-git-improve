@@ -88,11 +88,14 @@
 
 - 新增 dev 工具族（standalone 壳零实例验证）：`shot-standalone`（UI 截图）、
   `inspect-styles`（计算样式抽查）、`check-input-normalize` / `check-iter2-interactions` /
-  `check-register` / `check-repo-summary` / `check-iter7`（交互闭环验证）。
+  `check-register` / `check-repo-summary` / `check-iter7` / `check-backup` /
+  `check-light-theme` / `check-mobile`（各交互闭环与响应式/主题验证）、
+  `shot-readme.mjs`（README 配图实拍）。
 - spec 沉淀：`.trellis/spec/guides/instance-deploy-verify.md` 新增「standalone 壳验证流程」
   与「宿主 UI 契约」两节（popup div 按钮 / checkbox 尺寸纪律 / 表格列宽 / 候选端点探测 /
   CI 文案口径）。
-- 单测 101/101（+18）；CI 六项自查通过；全部改动经 standalone 壳截图/交互验证。
+- 单测 107/107（+24）；CI 六项自查通过；全部改动经 standalone 壳截图/交互验证；
+  375px 窄视口实测无水平溢出。
 
 ## [0.9.2] - 2026-10-31
 
