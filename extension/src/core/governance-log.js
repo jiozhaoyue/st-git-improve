@@ -14,7 +14,7 @@ const KEY = 'st_git_improve_governance';
 const MAX_ENTRIES = 200;
 
 /** 合法动作白名单（台账只记治理类动作；扩展键位见 strings.js ledger.action.*）。 */
-const ACTIONS = ['disable', 'enable', 'uninstall', 'dedupClean', 'move'];
+const ACTIONS = ['disable', 'enable', 'uninstall', 'install', 'dedupClean', 'move'];
 
 let backendPromise = null;
 async function backend() {

@@ -11,7 +11,7 @@ const V = '0.9.3';
 const backendMod = await import(`./src/core/backend.js?v=${V}`);
 const { hostDiscover, hostSettingsGet, hostToggleExtensionDisabled, hostMoveExtension, hostDeleteExtension } = backendMod;
 const { getSharedStore } = await import(`./src/core/accounts.js?v=${V}`);
-const { SITE_TYPES, siteKeyOf } = await import(`./src/core/sites.js?v=${V}`);
+const { SITE_TYPES, siteKeyOf, parseRepoUrl } = await import(`./src/core/sites.js?v=${V}`);
 const { pureInstall, buildZipBytes } = await import(`./src/core/installflow.js?v=${V}`);
 const { channelHint, classifyUrl, normalizeRepoInput, repoWebUrlFromClone } = await import(`./src/core/giturl.js?v=${V}`);
 const { originRepoFromHome, checkSelfUpdate } = await import(`./src/core/selfupdate.js?v=${V}`);
@@ -539,6 +539,12 @@ function buildInstallEntry(hooks) {
     }
     q('url').addEventListener('input', updateChannelHint);
     q('url').addEventListener('blur', applyNormalization);
+    // Enter 直接提交安装（地址框与分支框；go 灰化时 click 无效，天然兜底）
+    for (const input of [q('url'), q('branch')]) {
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') q('go').click();
+        });
+    }
 
     // 粘贴（clipboard API；授权失败明确提示，不静默）
     q('paste').addEventListener('click', async () => {
@@ -604,6 +610,8 @@ function buildInstallEntry(hooks) {
                 onLog: line => append(line),
             });
             append(t('ext.logDone', { name: result.name }), 'ok');
+            // 台账留痕：安装动作（含补录语义的首次安装；更新由行内更新自行记录）
+            await RT.govLog?.append('install', result.name, url || t('ledger.detail.hostChannel')).catch(() => { });
             // 附加能力：克隆成功时把结果导出为本地 zip（数据备份/手动上传双保险）
             if (result.cloned) {
                 try {
@@ -725,6 +733,38 @@ function buildExtensionsZone(hooks) {
         }
     }
 
+    /** 行内操作：补录来源登记（手动安装的扩展登记后可用行内更新与远端检查；官方 INPUT Popup）。 */
+    async function runRegisterSource(entry, button) {
+        const mod = await loadPopupMod();
+        const promptText = t('ext.registerPrompt', { name: entry.name || '' });
+        let raw;
+        if (mod) {
+            raw = await withBoundedSettle(mod.callGenericPopup(promptText, mod.POPUP_TYPE.INPUT, '', {
+                okButton: t('ext.registerSave'),
+            }));
+        } else {
+            raw = window.prompt(promptText);
+        }
+        if (typeof raw !== 'string' || !raw.trim()) return;
+        const normalized = normalizeRepoInput(raw.trim());
+        const url = normalized.url;
+        try {
+            parseRepoUrl(url); // 校验：仅接受 http(s) 克隆地址（纯前端更新走浏览器克隆），错误提前暴露
+            button.disabled = true;
+            await RT.store.recordInstall(entry.name, {
+                url,
+                target: entry.scope === 'global' ? 'global' : 'extension',
+            });
+            await RT.govLog?.append('install', entry.name, url).catch(() => { });
+            toast(t('ext.registerDone', { name: entry.name }), 'success');
+            await refresh({ force: true });
+        } catch (error) {
+            toast(String(error?.message || error), 'error');
+        } finally {
+            applyGate(button, can('update', RT.cap));
+        }
+    }
+
     /** 常驻已装列表 + 扫描三维（D5-4）：已装列表 + 可更新标记 + 远端状态（站点 API）。 */
     async function refresh({ force = false } = {}) {
         rows.innerHTML = `<tr><td colspan="5">${esc(t('ext.loading'))}</td></tr>`;
@@ -775,6 +815,13 @@ function buildExtensionsZone(hooks) {
                 uninstallButton.addEventListener('click', () => runUninstall(entry, uninstallButton));
                 actionsCell.append(uninstallButton);
                 applyGate(uninstallButton, can('remove', RT.cap));
+                if (!origin) {
+                    // 未登记来源（手动安装/其它途径装的）：补录后可用行内更新与远端检查
+                    const registerButton = el(`<button class="stgi-btn" title="${esc(t('ext.registerTitle'))}">${esc(t('ext.registerSource'))}</button>`);
+                    registerButton.addEventListener('click', () => runRegisterSource(entry, registerButton));
+                    actionsCell.prepend(registerButton);
+                    applyGate(registerButton, can('update', RT.cap));
+                }
                 const moveLabel = entry.scope === 'global' ? t('ext.moveToLocal') : t('ext.moveToGlobal');
                 const moveButton = el(`<button class="stgi-btn">${esc(moveLabel)}</button>`);
                 moveButton.addEventListener('click', () => runMove(entry, moveButton));
@@ -1203,8 +1250,8 @@ async function confirmDangerous(options) {
 
 // ---------------------------------------------------------------- 面板装配（总览 + 三区；D4-1/D4-2）
 
-/** 台账动作徽标着色（disable/enable/uninstall/dedupClean/move；未列出的不着色）。 */
-const LEDGER_BADGE = { disable: 'warn', enable: 'good', uninstall: 'bad', dedupClean: 'warn' };
+/** 台账动作徽标着色（disable/enable/uninstall/install/dedupClean/move；未列出的不着色）。 */
+const LEDGER_BADGE = { disable: 'warn', enable: 'good', uninstall: 'bad', install: 'good', dedupClean: 'warn' };
 
 /** 分区骨架（同页纵向分区，D4-2；非旧五页签）。 */
 function zoneWrap(zoneKey, title) {

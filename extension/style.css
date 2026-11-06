@@ -225,6 +225,18 @@
     text-align: right;
 }
 
+/* 分区入口行 hover 时右侧显示跳转箭头（强化「可点击」引导） */
+.stgi-summary-row::after {
+    content: '→';
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.stgi-summary-row:hover::after {
+    opacity: 0.8;
+}
+
 .stgi-env-head {
     justify-content: space-between;
 }
