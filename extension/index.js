@@ -770,6 +770,8 @@ function buildExtensionsZone(hooks) {
                 throw new Error(result.note || t('gov.opFailed'));
             }
             await RT.govLog?.append('uninstall', entry.name).catch(() => { });
+            // 卸载即清来源登记（失效登记的主来源在这里就地消化）
+            await RT.store.removeInstall(entry.name).catch(() => { });
             toast(t('ext.toastUninstalled', { name: entry.name }), 'success');
             await refresh({ force: true });
             await hooks.scanGovernance?.({ force: true });
@@ -1083,6 +1085,10 @@ function buildGovernanceZone(hooks) {
                 throw new Error(result.note || t('gov.opFailed'));
             }
             await RT.govLog?.append('dedupClean', dup.local.name).catch(() => { });
+            // 删的是本地副本：若来源登记的也是本地安装，就地清理登记
+            if (RT.store.getInstalls()[dup.local.name]?.target !== 'global') {
+                await RT.store.removeInstall(dup.local.name).catch(() => { });
+            }
             toast(t('gov.toastDedupDeleted', { name: dup.local.name }), 'success');
             await reload();
             await hooks.scanExtensions?.({ force: true });
@@ -1397,6 +1403,33 @@ function buildAccountsZone(hooks) {
     return { box, refresh };
 }
 
+/** 面板尾部「使用帮助」折叠区（常见问题；默认收起不占空间）。 */
+function buildHelpSection() {
+    const pairs = [
+        ['help.pureQ', 'help.pureA'],
+        ['help.sshQ', 'help.sshA'],
+        ['help.updateQ', 'help.updateA'],
+        ['help.hideQ', 'help.hideA'],
+        ['help.staleQ', 'help.staleA'],
+    ];
+    const box = el(`<details class="stgi-section stgi-help">
+        <summary><b></b></summary>
+        <div data-role="qa"></div>
+    </details>`);
+    box.querySelector('summary b').textContent = t('help.title');
+    const qa = box.querySelector('[data-role="qa"]');
+    for (const [qKey, aKey] of pairs) {
+        const item = el(`<div class="stgi-help-item">
+            <div class="stgi-help-q"></div>
+            <div class="stgi-help-a stgi-note"></div>
+        </div>`);
+        item.querySelector('.stgi-help-q').textContent = t(qKey);
+        item.querySelector('.stgi-help-a').textContent = t(aKey);
+        qa.append(item);
+    }
+    return box;
+}
+
 /** 分区状态摘要（D4-1 首屏三件套之二）：每分区一行统计，点击滚动到对应分区。 */
 function buildZoneSummary(root) {
     const box = el(`<div class="stgi-section stgi-summary">
@@ -1553,7 +1586,7 @@ async function buildPanel(container) {
     const accountsZone = buildAccountsZone(hooks);
 
     overview.append(buildEnvCard(), summaryCtl.box, buildQuickActions(root, hooks));
-    root.append(overview, extensionsZone.box, governanceZone.box, accountsZone.box);
+    root.append(overview, extensionsZone.box, governanceZone.box, accountsZone.box, buildHelpSection());
     container.innerHTML = '';
     container.append(root);
 
