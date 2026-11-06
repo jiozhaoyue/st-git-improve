@@ -702,6 +702,13 @@ function buildInstallEntry(hooks) {
                 // 私有仓/不存在：给 actionable 提示（登录后可看），而不是静默隐藏
                 summary.textContent = t('ext.repoSummaryHidden');
                 summary.style.display = '';
+            } else if (info.reasonKey === 'remote.err.http' && info.status === 401) {
+                // 凭据无效：与「未登录」区分，指引去账号页
+                summary.textContent = t('ext.repoSummaryAuth');
+                summary.style.display = '';
+            } else if (info.reasonKey === 'remote.err.rateLimit') {
+                summary.textContent = t('remote.err.rateLimit');
+                summary.style.display = '';
             } else {
                 summary.style.display = 'none';
             }

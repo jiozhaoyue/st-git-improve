@@ -118,6 +118,7 @@ export const strings = {
     'ext.repoSummaryStars': '⭐ {stars}',
     'ext.repoSummaryPushed': '最近推送 {time}',
     'ext.repoSummaryHidden': '仓库摘要不可见（不存在或私有）——登录该站点后可查看',
+    'ext.repoSummaryAuth': '仓库摘要不可见（凭据无效）——请到「账号与设置」更新该站点凭据',
     'ext.sortDefault': '默认排序',
     'ext.sortName': '按名称',
     'ext.sortInstalled': '按安装时间',
