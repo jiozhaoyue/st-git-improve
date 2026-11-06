@@ -3,11 +3,13 @@
 // 纯逻辑模块（L1-MR-6 三形态同构）：无 DOM 依赖，Node 测试环境可直接单测。
 // 文案纪律（R-15）：面向用户的 reason 一律 i18n 键（键位清单见文件尾注释），禁止硬编码文案。
 
-import { getCsrfToken } from './backend.js';
+// 版本参数：与 manifest.json version 同步（宿主 HTTP 缓存破坏）——本模块是全仓
+// 唯一用静态 import 引 core 模块的文件（backend.js），换动态 import 补 ?v= 参数。
+const V = '0.9.3';
+const { getCsrfToken } = await import(`./backend.js?v=${V}`);
 
 const AUTHORITY_API = '/api/plugins/authority/ext-mgmt';
 const PROBE_TIMEOUT_MS = 4000;
-
 /** Authority 五类管理能力（D2-4 / design.md §5 契约草案 v0 的能力清单端点）。 */
 export const AUTHORITY_CAPABILITIES = ['rebuildUpdate', 'depsFix', 'dedupClean', 'disableZone', 'gitBridge'];
 
