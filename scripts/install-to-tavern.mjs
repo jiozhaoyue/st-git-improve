@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+// 【已废弃 2026-11-07】本脚本针对**已移除的服务端插件架构**（拷贝 plugin/ 到
+// <酒馆>/plugins/ 并 npm install）——0.9.x 纯前端化重构时 plugin/ 已删除，本脚本
+// 运行必然崩溃（cpSync ENOENT）。
+// 纯前端安装方式见 README「安装」节：①扩展管理器填 Git URL 一键克隆；
+// ②手动拷贝本仓库到 data/<user>/extensions/st-git-improve/。
+// 保留本文件供未来 Authority 服务端能力集成时参考其安装编排。
 // Install this plugin into a SillyTavern/Luker instance.
 // Usage: node scripts/install-to-tavern.mjs <path-to-tavern-root>
 // Copies plugin/ sources and runs `npm install --omit=dev` inside the
