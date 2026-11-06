@@ -84,6 +84,15 @@ export class AccountStore {
         return { ...(this.state.installs || {}) };
     }
 
+    /** 移除来源登记（扩展已卸载/登记失效时清理）。 */
+    async removeInstall(name) {
+        if (this.state.installs && String(name) in this.state.installs) {
+            delete this.state.installs[String(name)];
+            await this.save();
+        }
+        return this.snapshot();
+    }
+
     /** 站点下的全部账号（siteKey = type:baseUrl）。 */
     accountsFor(siteKey) {
         return this.state.accounts.filter(a => siteKeyOf(a.type, a.baseUrl) === siteKey);

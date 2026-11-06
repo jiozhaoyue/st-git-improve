@@ -613,6 +613,10 @@ function buildInstallEntry(hooks) {
                 ].filter(Boolean);
                 summary.textContent = parts.join(t('common.listSep'));
                 summary.style.display = parts.length ? '' : 'none';
+            } else if (info.reasonKey === 'remote.err.notFound') {
+                // 私有仓/不存在：给 actionable 提示（登录后可看），而不是静默隐藏
+                summary.textContent = t('ext.repoSummaryHidden');
+                summary.style.display = '';
             } else {
                 summary.style.display = 'none';
             }
@@ -685,12 +689,17 @@ function buildExtensionsZone(hooks) {
             <table class="stgi-table"><thead>
                 <tr><th>${esc(t('ext.colName'))}</th><th>${esc(t('ext.colVersion'))}</th><th>${esc(t('ext.colRemote'))}</th><th>${esc(t('ext.colDeps'))}</th><th>${esc(t('ext.colActions'))}</th></tr>
             </thead><tbody data-role="rows"></tbody></table>
+            <div class="stgi-row" data-role="staleRow" style="display:none">
+                <span class="stgi-note" data-role="staleNote" style="flex:1 1 auto"></span>
+                <button class="stgi-btn" data-role="staleClean"></button>
+            </div>
             <div class="stgi-log" data-role="zoneLog" style="display:none"></div>
         </div>`);
     box.append(list);
 
     const rows = list.querySelector('[data-role="rows"]');
     const zoneLog = list.querySelector('[data-role="zoneLog"]');
+    const staleRow = list.querySelector('[data-role="staleRow"]');
 
     /** 行内操作：更新（仅登记来源者；宿主 delete + 重装，删前强确认——本地改动不备份）。 */
     async function runUpdate(entry, origin, button) {
@@ -815,6 +824,30 @@ function buildExtensionsZone(hooks) {
             RT.summary.updatable = entries.filter(entry => installs[entry.name]).length;
             RT.summary.scannedAt = Date.now();
             hooks.onSummaryChange?.();
+            // 失效登记：installs 里指向已不存在扩展的残留（面板外卸载/宿主清理所致）——一键清理
+            const installedNames = new Set(entries.map(entry => entry.name));
+            const staleNames = Object.keys(installs).filter(name => !installedNames.has(name));
+            if (staleNames.length > 0) {
+                staleRow.style.display = '';
+                staleRow.querySelector('[data-role="staleNote"]').textContent = t('gov.ledgerStale', { count: staleNames.length });
+                const cleanButton = staleRow.querySelector('[data-role="staleClean"]');
+                cleanButton.textContent = t('gov.ledgerStaleClean');
+                cleanButton.onclick = async () => {
+                    cleanButton.disabled = true;
+                    try {
+                        for (const name of staleNames) {
+                            await RT.store.removeInstall(name);
+                        }
+                        toast(t('gov.toastStaleCleaned', { count: staleNames.length }), 'success');
+                        await refresh({ force: true });
+                    } catch (error) {
+                        toast(String(error?.message || error), 'error');
+                        cleanButton.disabled = false;
+                    }
+                };
+            } else {
+                staleRow.style.display = 'none';
+            }
             rows.innerHTML = '';
             if (entries.length === 0) {
                 rows.innerHTML = `<tr><td colspan="5">${esc(t('ext.empty'))}</td></tr>`;
@@ -880,6 +913,7 @@ function buildExtensionsZone(hooks) {
                 }
             }
         } catch (error) {
+            staleRow.style.display = 'none';
             rows.innerHTML = `<tr><td colspan="5">${esc(t('ext.scanFailed', { message: String(error?.message || error) }))}</td></tr>`;
         }
     }
@@ -942,6 +976,15 @@ function buildGovernanceZone(hooks) {
                         <button class="stgi-btn" data-act="govLedgerToggle">${esc(t('gov.ledgerToggle'))}</button>
                         <button class="stgi-btn" data-act="govLedgerExport">${esc(t('gov.ledgerExport'))}</button>
                         <button class="stgi-btn" data-act="govLedgerClear">${esc(t('gov.ledgerClear'))}</button>
+                        <select data-role="ledgerFilter" style="flex:0 0 130px">
+                            <option value="">${esc(t('gov.ledgerFilterAll'))}</option>
+                            <option value="install">${esc(t('ledger.action.install'))}</option>
+                            <option value="uninstall">${esc(t('ledger.action.uninstall'))}</option>
+                            <option value="disable">${esc(t('ledger.action.disable'))}</option>
+                            <option value="enable">${esc(t('ledger.action.enable'))}</option>
+                            <option value="move">${esc(t('ledger.action.move'))}</option>
+                            <option value="dedupClean">${esc(t('ledger.action.dedupClean'))}</option>
+                        </select>
                     </div>
                 <table class="stgi-table" data-role="ledgerTable" style="display:none"><thead>
                     <tr><th>${esc(t('gov.ledgerColTime'))}</th><th>${esc(t('gov.ledgerColAction'))}</th><th>${esc(t('gov.ledgerColName'))}</th><th>${esc(t('gov.ledgerColDetail'))}</th></tr>
@@ -1143,21 +1186,19 @@ function buildGovernanceZone(hooks) {
         }
     });
 
-    // 治理台账（extension_settings 本地记录，C-2；最新在前，最近 50 条）
-    box.querySelector('[data-act="govLedgerToggle"]').addEventListener('click', async event => {
-        const button = event.target;
-        const show = ledgerTable.style.display === 'none';
-        ledgerTable.style.display = show ? '' : 'none';
-        if (!show) return;
-        ledgerRows.innerHTML = `<tr><td colspan="4">${esc(t('gov.loading'))}</td></tr>`;
+    // 治理台账（extension_settings 本地记录，C-2；最新在前）——支持按动作过滤
+    const ledgerFilter = box.querySelector('[data-role="ledgerFilter"]');
+    async function renderLedger() {
+        const filter = ledgerFilter.value;
         try {
-            const actions = await RT.govLog.list({ limit: 50 });
+            const actions = await RT.govLog.list({ limit: 200 });
+            const shown = filter ? actions.filter(entry => entry.action === filter) : actions;
             ledgerRows.innerHTML = '';
-            if (!actions.length) {
+            if (!shown.length) {
                 ledgerRows.innerHTML = `<tr><td colspan="4">${esc(t('gov.ledgerEmpty'))}</td></tr>`;
                 return;
             }
-            for (const entry of actions) {
+            for (const entry of shown) {
                 const badgeCls = LEDGER_BADGE[entry.action] || '';
                 ledgerRows.append(el(`<tr>
                     <td>${esc(new Date(entry.ts).toLocaleString('zh-CN', { hour12: false }))}</td>
@@ -1168,6 +1209,19 @@ function buildGovernanceZone(hooks) {
             }
         } catch (error) {
             ledgerRows.innerHTML = `<tr><td colspan="4">${esc(t('gov.loadFailed', { message: String(error?.message || error) }))}</td></tr>`;
+        }
+    }
+    box.querySelector('[data-act="govLedgerToggle"]').addEventListener('click', async event => {
+        const show = ledgerTable.style.display === 'none';
+        ledgerTable.style.display = show ? '' : 'none';
+        if (!show) return;
+        ledgerRows.innerHTML = `<tr><td colspan="4">${esc(t('gov.loading'))}</td></tr>`;
+        await renderLedger();
+    });
+    ledgerFilter.addEventListener('change', () => {
+        if (ledgerTable.style.display !== 'none') {
+            ledgerRows.innerHTML = `<tr><td colspan="4">${esc(t('gov.loading'))}</td></tr>`;
+            renderLedger();
         }
     });
 
