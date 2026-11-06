@@ -116,8 +116,9 @@ SillyTavern / Luker 的**纯前端扩展**：在酒馆内完成私有 git 源多
 
 ```bash
 npm install
-npm test            # 单元测试（无网络，107 项）
+npm test            # 单元测试（无网络，112 项）
 npm run standalone  # 启动 standalone 开发预览壳（端口 3040，仅开发用，见「已知边界」）
+npm run verify      # 壳启动后一键 UI 验证串跑（9 步：截图/交互闭环/响应式）
 ```
 
 UI 迭代验证工具（standalone 壳零实例依赖，详见 `.trellis/spec/guides/instance-deploy-verify.md`）：
