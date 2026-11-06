@@ -1248,11 +1248,13 @@ function buildGovernanceZone(hooks) {
                 rows.innerHTML = `<tr><td colspan="3">${esc(t('gov.empty'))}</td></tr>`;
                 return;
             }
-            const names = entries.length > 0 ? entries.map(entry => entry.name) : [...disabled];
-            const scopeByName = new Map(entries.map(entry => [entry.name, entry.scope]));
-            for (const name of names) {
+            // 按 entries 逐条渲染（同名 local/global 两条各自一行、scope 各用各的——
+            // 旧实现按名字查 Map，同名时 scope 被后写者覆盖，两行显示同一范围）
+            const rowsData = entries.length > 0
+                ? entries.map(entry => ({ name: entry.name, scope: entry.scope }))
+                : [...disabled].map(name => ({ name, scope: 'local' }));
+            for (const { name, scope } of rowsData) {
                 const isDisabled = disabled.has(name);
-                const scope = scopeByName.get(name) || 'local';
                 const row = el(`<tr>
                     <td><span class="stgi-name">${esc(name)}</span><div class="stgi-note">${esc(scope === 'global' ? t('gov.scopeGlobalNote') : t('gov.scopeLocalNote'))}</div></td>
                     <td>${isDisabled ? `<span class="stgi-badge warn">${esc(t('gov.stateOff'))}</span>` : `<span class="stgi-badge good">${esc(t('gov.stateOn'))}</span>`}</td>
