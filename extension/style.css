@@ -217,7 +217,18 @@
     border-left: 3px solid var(--SmartThemeQuoteColor, #4a6da7);
 }
 
-/* 分区状态摘要行（D4-1 之二）：整行可点，悬停高亮引导跳转 */
+/* 分区状态摘要行（D4-1 之二）：整行可点，悬停高亮引导跳转。
+   sticky：长面板滚动时分区入口常驻宿主抽屉可视区顶部，随时跳转。
+   底色用 BlurTint（面板/抽屉底色语义，与 .stgi-btn 同源）；BodyColor 是文字色不能当底 */
+.stgi-summary {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    /* 豁免: 常驻底色为抽屉底色变量减透明，无对应专用变量 */
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a1a) 94%, transparent);
+    padding: 4px 0 6px 0;
+    margin-bottom: 8px;
+}
 .stgi-summary-row {
     display: flex;
     gap: 8px;

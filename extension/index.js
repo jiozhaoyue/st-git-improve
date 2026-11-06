@@ -1716,8 +1716,10 @@ async function buildPanel(container) {
     const accountsZone = buildAccountsZone(hooks);
     hooks.scanAccounts = accountsZone.reloadAccounts;
 
-    overview.append(buildEnvCard(), summaryCtl.box, buildQuickActions(root, hooks));
-    root.append(overview, extensionsZone.box, governanceZone.box, accountsZone.box, buildHelpSection());
+    overview.append(buildEnvCard(), buildQuickActions(root, hooks));
+    // 分区入口作为面板直接子块（sticky 需要父元素覆盖整个滚动范围——放在
+    // overview zone 内会在 overview 滚出视野时被父元素边界带走）
+    root.append(overview, summaryCtl.box, extensionsZone.box, governanceZone.box, accountsZone.box, buildHelpSection());
     container.innerHTML = '';
     container.append(root);
 
