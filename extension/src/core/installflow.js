@@ -89,11 +89,23 @@ export async function pureInstall({ url, branch, target = 'extension', replace =
     // 增强路径：浏览器内克隆（失败不阻断）
     let cloned;
     try {
+        // 进度按 10% 步进记日志（onProgress 每 chunk 触发，只在跨步进时写 DOM，
+        // 符合 L1-MR-9 高频回调不逐条驱动 DOM 的纪律）
+        let lastPct = 0;
         cloned = await cloneToMemory({
             url: repo.httpsUrl,
             branch: branch || undefined,
             auth,
             onLog: log,
+            onProgress: info => {
+                if (info?.phase === 'receiving' && info.total > 0) {
+                    const pct = Math.min(100, Math.round((info.loaded / info.total) * 100));
+                    if (pct >= lastPct + 10) {
+                        log(`浏览器内克隆进度 ${pct}%`);
+                        lastPct = pct;
+                    }
+                }
+            },
         });
     } catch (error) {
         log(`浏览器内克隆不可用（${String(error.message || error).slice(0, 120)}）——安装不受影响`);

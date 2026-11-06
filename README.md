@@ -30,6 +30,8 @@ SillyTavern / Luker 的**纯前端扩展**：在酒馆内完成私有 git 源多
 > 注：上表按目标态描述；面板重构进行中（分支 `feature/pure-frontend-panel-ui`），
 > 以合入后的实际实现为准。
 
+![面板总览：运行环境卡 + 分区入口 + 快捷动作（standalone 开发壳实拍）](docs/screenshots/panel-overview.png)
+
 ## 解决什么问题
 
 | 原生痛点 | 本扩展方案 |
