@@ -23,6 +23,8 @@ export const strings = {
     'panel.renderFailed': '面板渲染失败——请刷新页面重试（详情见控制台）',
     'panel.refreshPage': '刷新页面（立即生效）',
     'panel.refreshPageTitle': '重载宿主页面，让新装/更新的扩展立即生效',
+    'panel.collapseLog': '收起',
+    'panel.collapseLogTitle': '任务已完成，收起日志区',
 
     // ---- 官方 Popup（D9-3 强确认基线） ----
     'popup.ok': '确认',
@@ -112,6 +114,9 @@ export const strings = {
     'ext.repoSummaryStars': '⭐ {stars}',
     'ext.repoSummaryPushed': '最近推送 {time}',
     'ext.repoSummaryHidden': '仓库摘要不可见（不存在或私有）——登录该站点后可查看',
+    'ext.sortDefault': '默认排序',
+    'ext.sortName': '按名称',
+    'ext.sortInstalled': '按安装时间',
     'ext.remoteChecking': '检查中…',
     'ext.remoteNewer': '有新版本',
     'ext.remoteSame': '已是最新',

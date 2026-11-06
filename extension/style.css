@@ -88,6 +88,15 @@
     font-weight: bold;
 }
 
+/* 行内小下拉（排序/台账过滤）：宿主对 select 有全宽拉伸样式，此处还原内容宽 */
+.stgi-row .stgi-inline-select {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 40%;
+    margin-left: auto;
+}
+
 .stgi-badge {
     display: inline-block;
     padding: 1px 7px;

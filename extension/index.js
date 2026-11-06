@@ -80,11 +80,18 @@ function appendLogLine(log, line, kind = 'plain') {
     log.scrollTop = log.scrollHeight;
 }
 
-/** 在日志区追加「刷新页面」按钮（安装/更新完成后面板文件已落盘，刷新即生效）。 */
+/** 在日志区追加「刷新页面 / 收起日志」按钮组（安装/更新完成后面板文件已落盘，刷新即生效）。 */
 function appendRefreshButton(log) {
-    const button = el(`<button class="stgi-btn" title="${esc(t('panel.refreshPageTitle'))}">${esc(t('panel.refreshPage'))}</button>`);
-    button.addEventListener('click', () => location.reload());
-    log.append(el('<div></div>'), button);
+    const row = el('<div class="stgi-row"></div>');
+    const refreshButton = el(`<button class="stgi-btn" title="${esc(t('panel.refreshPageTitle'))}">${esc(t('panel.refreshPage'))}</button>`);
+    refreshButton.addEventListener('click', () => location.reload());
+    const collapseButton = el(`<button class="stgi-btn" title="${esc(t('panel.collapseLogTitle'))}">${esc(t('panel.collapseLog'))}</button>`);
+    collapseButton.addEventListener('click', () => {
+        log.style.display = 'none';
+        log.innerHTML = '';
+    });
+    row.append(refreshButton, collapseButton);
+    log.append(el('<div></div>'), row);
 }
 
 /**
@@ -129,6 +136,12 @@ const TIER_BADGE = {
     authority: { key: 'cap.tier.authority', cls: 'warn' },
     'authority-admin': { key: 'cap.tier.authorityAdmin', cls: 'good' },
 };
+
+/** 三态徽标渲染信息（抽屉头部常显 + 环境卡共用）。 */
+function tierBadgeInfo(cap) {
+    const tier = TIER_BADGE[cap?.tier] || TIER_BADGE.pure;
+    return { cls: tier.cls, text: t(tier.key) };
+}
 
 /** 有界 JSON 请求（L1-MR-7：任何 await 必须能 settle；失败返回 null 不阻塞环境卡）。 */
 async function fetchJsonBounded(url, timeoutMs = 4000) {
@@ -685,7 +698,14 @@ function buildExtensionsZone(hooks) {
 
     const list = el(`
         <div>
-            <div class="stgi-row"><b>${esc(t('ext.listTitle'))}</b></div>
+            <div class="stgi-row">
+                <b>${esc(t('ext.listTitle'))}</b>
+                <select data-role="sortBy" class="stgi-inline-select">
+                    <option value="default">${esc(t('ext.sortDefault'))}</option>
+                    <option value="name">${esc(t('ext.sortName'))}</option>
+                    <option value="installed">${esc(t('ext.sortInstalled'))}</option>
+                </select>
+            </div>
             <table class="stgi-table"><thead>
                 <tr><th>${esc(t('ext.colName'))}</th><th>${esc(t('ext.colVersion'))}</th><th>${esc(t('ext.colRemote'))}</th><th>${esc(t('ext.colDeps'))}</th><th>${esc(t('ext.colActions'))}</th></tr>
             </thead><tbody data-role="rows"></tbody></table>
@@ -700,6 +720,8 @@ function buildExtensionsZone(hooks) {
     const rows = list.querySelector('[data-role="rows"]');
     const zoneLog = list.querySelector('[data-role="zoneLog"]');
     const staleRow = list.querySelector('[data-role="staleRow"]');
+    const sortBy = list.querySelector('[data-role="sortBy"]');
+    sortBy.addEventListener('change', () => refresh());
 
     /** 行内操作：更新（仅登记来源者；宿主 delete + 重装，删前强确认——本地改动不备份）。 */
     async function runUpdate(entry, origin, button) {
@@ -824,6 +846,13 @@ function buildExtensionsZone(hooks) {
             RT.summary.updatable = entries.filter(entry => installs[entry.name]).length;
             RT.summary.scannedAt = Date.now();
             hooks.onSummaryChange?.();
+            // 排序（默认=宿主 discover 顺序；名称=字典序；装于=登记时间倒序，未登记排最后）
+            const sortMode = sortBy.value;
+            if (sortMode === 'name') {
+                entries.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+            } else if (sortMode === 'installed') {
+                entries.sort((a, b) => (Number(installs[b.name]?.installedAt) || 0) - (Number(installs[a.name]?.installedAt) || 0));
+            }
             // 失效登记：installs 里指向已不存在扩展的残留（面板外卸载/宿主清理所致）——一键清理
             const installedNames = new Set(entries.map(entry => entry.name));
             const staleNames = Object.keys(installs).filter(name => !installedNames.has(name));
@@ -976,7 +1005,7 @@ function buildGovernanceZone(hooks) {
                         <button class="stgi-btn" data-act="govLedgerToggle">${esc(t('gov.ledgerToggle'))}</button>
                         <button class="stgi-btn" data-act="govLedgerExport">${esc(t('gov.ledgerExport'))}</button>
                         <button class="stgi-btn" data-act="govLedgerClear">${esc(t('gov.ledgerClear'))}</button>
-                        <select data-role="ledgerFilter" style="flex:0 0 130px">
+                        <select data-role="ledgerFilter" class="stgi-inline-select">
                             <option value="">${esc(t('gov.ledgerFilterAll'))}</option>
                             <option value="install">${esc(t('ledger.action.install'))}</option>
                             <option value="uninstall">${esc(t('ledger.action.uninstall'))}</option>
@@ -1599,6 +1628,7 @@ function buildDrawerBlock(container) {
         <div class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
                 <b data-role="panelTitle"></b>
+                <span class="stgi-badge" data-role="drawerTier"></span>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
@@ -1609,7 +1639,7 @@ function buildDrawerBlock(container) {
     block.querySelector('[data-role="panelTitle"]').textContent = t('panel.title');
     block.querySelector('[data-role="panelBody"]').textContent = t('panel.loading');
     container.append(block);
-    return block.querySelector('[data-role="panelBody"]');
+    return block;
 }
 
 async function mountPanelBlock() {
@@ -1622,9 +1652,16 @@ async function mountPanelBlock() {
         console.error('[st-git-improve] extensions settings drawer not found; panel not injected');
         return;
     }
-    const body = buildDrawerBlock(container);
+    const block = buildDrawerBlock(container);
+    const body = block.querySelector('[data-role="panelBody"]');
     try {
         await buildPanel(body);
+        // 抽屉头部常显三态徽标（D3-3 延伸）：面板收起时也能看到运行态
+        const badge = block.querySelector('[data-role="drawerTier"]');
+        const info = tierBadgeInfo(RT.cap);
+        badge.className = `stgi-badge ${info.cls}`;
+        badge.textContent = info.text;
+        badge.title = t('panel.title');
     } catch (error) {
         console.error('[st-git-improve] panel render failed:', error);
         body.textContent = '';
