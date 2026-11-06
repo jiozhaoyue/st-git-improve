@@ -255,7 +255,6 @@ export const strings = {
     'acc.testFailError': '{name}（{message}）',
     'acc.testAllDone': '全部测试完成：有效 {ok}，异常 {failed}{detail}',
     'acc.testAllDetail': '：{list}',
-    'acc.exportLink': '导出',
     'acc.errNoAccounts': '文件里没有 accounts 数组',
     'acc.confirmImport': '导入 {count} 个账号？（覆盖当前账号库）',
     'acc.importDone': '导入完成',
@@ -307,4 +306,10 @@ export const strings = {
     'gov.toastDedupDeleted': '已删除本地副本 {name}，全局版继续可用',
     'quick.nothingRegistered': '没有登记过来源的扩展（用本面板装过才有）',
     'quick.updateTotal': '共 {count} 个待更新扩展',
+    'quick.exportAll': '导出全部数据',
+    'quick.importAll': '导入全部数据',
+    'quick.exportAllDone': '已导出：账号 {accounts} · 来源登记 {installs} · 台账 {ledger}',
+    'quick.importConfirm': '导入备份：{accounts} 个账号、{installs} 条来源登记、{ledger} 条台账。与现有数据合并（同站点同用户名的账号会被覆盖）。继续？',
+    'quick.importAllDone': '导入完成：账号 {accounts} · 登记来源 {installs} · 台账 {ledger} 条',
+    'quick.importBadFile': '备份文件格式不对（需要本面板「导出全部数据」生成的 JSON）',
 };

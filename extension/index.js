@@ -45,6 +45,23 @@ const esc = value => String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+/**
+ * 触发浏览器下载（实测契约：template.content 里的 a.click() 不触发下载——
+ * 面板 el() 全走 template 路径，账号/台账/全部导出曾因此全部静默失效；
+ * 必须 createElement + 插入 DOM 后 click，随后移除并回收 objectURL）。
+ * @param {string} href @param {string} filename
+ */
+function triggerDownload(href, filename) {
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = filename;
+    link.rel = 'noopener';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 5000);
+}
+
 /** 面板运行时上下文：能力态 + 账号库 + 台账 + 分区摘要（buildPanel 里初始化）。 */
 const RT = {
     store: null,      // AccountStore（凭据与来源登记，事实源在宿主设置，C-2）
@@ -445,9 +462,7 @@ function tabAccounts(root) {
 
     q('export').addEventListener('click', () => {
         const blob = new Blob([JSON.stringify(RT.store.snapshot(), null, 2)], { type: 'application/json' });
-        const link = el(`<a href="${URL.createObjectURL(blob)}" download="st-git-improve-accounts.json">${esc(t('acc.exportLink'))}</a>`);
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+        triggerDownload(URL.createObjectURL(blob), 'st-git-improve-accounts.json');
     });
 
     q('import').addEventListener('click', () => q('importFile').click());
@@ -484,7 +499,7 @@ function tabAccounts(root) {
     });
 
     reload();
-    return section;
+    return { box: section, reload };
 }
 
 // ---------------------------------------------------------------- 分区一：我的扩展（D5-1）
@@ -1265,9 +1280,7 @@ function buildGovernanceZone(hooks) {
         try {
             const actions = await RT.govLog.list({ limit: 200 });
             const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), entries: actions }, null, 2)], { type: 'application/json' });
-            const link = el(`<a href="${URL.createObjectURL(blob)}" download="st-git-improve-governance.json"></a>`);
-            link.click();
-            setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+            triggerDownload(URL.createObjectURL(blob), 'st-git-improve-governance.json');
         } catch (error) {
             toast(String(error.message || error), 'error');
         }
@@ -1391,7 +1404,8 @@ function zoneWrap(zoneKey, title) {
 /** 分区三「账号与设置」（D5-3：账号功能全保留 + 就地设置灰化）。 */
 function buildAccountsZone(hooks) {
     const box = zoneWrap('accounts', t('acc.title'));
-    box.append(tabAccounts(null));
+    const accounts = tabAccounts(null);
+    box.append(accounts.box);
     box.append(buildInlineSettings());
     async function refresh() {
         const snapshot = RT.store.snapshot();
@@ -1400,7 +1414,7 @@ function buildAccountsZone(hooks) {
         hooks.onSummaryChange?.();
     }
     refresh();
-    return { box, refresh };
+    return { box, refresh, reloadAccounts: accounts.reload };
 }
 
 /** 面板尾部「使用帮助」折叠区（常见问题；默认收起不占空间）。 */
@@ -1471,6 +1485,9 @@ function buildQuickActions(root, hooks) {
             <button class="stgi-btn" data-act="quickUpdateAll">${esc(t('quick.updateAll'))}</button>
             <button class="stgi-btn" data-act="quickFullScan">${esc(t('quick.fullScan'))}</button>
             <button class="stgi-btn" data-act="quickSelfCheck">${esc(t('quick.selfCheck'))}</button>
+            <button class="stgi-btn" data-act="quickExportAll">${esc(t('quick.exportAll'))}</button>
+            <button class="stgi-btn" data-act="quickImportAll">${esc(t('quick.importAll'))}</button>
+            <input type="file" data-role="importAllFile" accept="application/json" style="display:none" />
             <span class="stgi-note" data-role="quickState"></span>
         </div>
         <div class="stgi-row"><span class="stgi-note" data-role="selfState"></span></div>
@@ -1558,6 +1575,95 @@ function buildQuickActions(root, hooks) {
         runSelfUpdateCheck(q('selfState'), event.target);
     });
 
+    // 导出全部数据（迁移备份：账号库快照 + 台账，单 JSON）
+    box.querySelector('[data-act="quickExportAll"]').addEventListener('click', async event => {
+        const button = event.target;
+        button.disabled = true;
+        try {
+            const [snapshot, ledger] = await Promise.all([
+                Promise.resolve(RT.store.snapshot()),
+                RT.govLog.list({ limit: 200 }),
+            ]);
+            const payload = {
+                kind: 'st-git-improve-backup',
+                exportedAt: new Date().toISOString(),
+                accounts: snapshot,
+                governance: ledger,
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const stamp = new Date().toISOString().slice(0, 10);
+            triggerDownload(URL.createObjectURL(blob), `st-git-improve-backup-${stamp}.json`);
+            toast(t('quick.exportAllDone', {
+                accounts: snapshot.accounts.length,
+                installs: Object.keys(snapshot.installs || {}).length,
+                ledger: ledger.length,
+            }), 'success');
+        } catch (error) {
+            toast(String(error.message || error), 'error');
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    // 导入全部数据（迁移恢复：与现有数据合并；同站点同用户名账号覆盖）
+    box.querySelector('[data-act="quickImportAll"]').addEventListener('click', () => q('importAllFile').click());
+    q('importAllFile').addEventListener('change', async event => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        try {
+            const payload = JSON.parse(await file.text());
+            const accounts = payload?.accounts;
+            if (payload?.kind !== 'st-git-improve-backup' || !Array.isArray(accounts?.accounts)) {
+                throw new Error(t('quick.importBadFile'));
+            }
+            const installs = accounts.installs && typeof accounts.installs === 'object' ? accounts.installs : {};
+            const ledgerCount = Array.isArray(payload.governance) ? payload.governance.length : 0;
+            const confirmed = await confirmDangerous({
+                text: t('quick.importConfirm', {
+                    accounts: accounts.accounts.length,
+                    installs: Object.keys(installs).length,
+                    ledger: ledgerCount,
+                }),
+                okButton: t('popup.ok'),
+            });
+            if (!confirmed) return;
+            let imported = 0;
+            for (const account of accounts.accounts) {
+                try {
+                    await RT.store.addAccount({
+                        type: account.type,
+                        baseUrl: account.baseUrl,
+                        username: account.username,
+                        token: account.token,
+                        note: account.note,
+                        method: account.method || 'pat',
+                        replaceExisting: true,
+                        makeDefault: false,
+                    });
+                    imported += 1;
+                } catch { /* 单条失败不中断 */ }
+            }
+            for (const [siteKey, id] of Object.entries(accounts.defaults || {})) {
+                await RT.store.setDefault(siteKey, id).catch(() => { });
+            }
+            let registered = 0;
+            for (const [name, origin] of Object.entries(installs)) {
+                try {
+                    await RT.store.recordInstall(name, origin);
+                    registered += 1;
+                } catch { /* 单条失败不中断 */ }
+            }
+            const ledgerTotal = ledgerCount ? await RT.govLog.importAll(payload.governance) : 0;
+            toast(t('quick.importAllDone', { accounts: imported, installs: registered, ledger: ledgerTotal }), 'success');
+            await hooks.scanAccounts?.();
+            await hooks.scanExtensions?.({ force: true });
+            await hooks.scanGovernance?.({ force: true });
+        } catch (error) {
+            toast(String(error?.message || error), 'error');
+        }
+    });
+
     return box;
 }
 
@@ -1584,6 +1690,7 @@ async function buildPanel(container) {
     const governanceZone = buildGovernanceZone(hooks);
     hooks.scanGovernance = governanceZone.refresh;
     const accountsZone = buildAccountsZone(hooks);
+    hooks.scanAccounts = accountsZone.reloadAccounts;
 
     overview.append(buildEnvCard(), summaryCtl.box, buildQuickActions(root, hooks));
     root.append(overview, extensionsZone.box, governanceZone.box, accountsZone.box, buildHelpSection());

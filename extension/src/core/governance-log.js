@@ -173,5 +173,12 @@ export function createGovernanceLog() {
         async clear() {
             await writeAll([]);
         },
+        /** 导入台账条目（与现有记录按 ts+action+name 去重合并；完整备份恢复用）。 */
+        async importAll(entries) {
+            const current = await readAll();
+            const merged = mergeEntries(current, Array.isArray(entries) ? entries : []);
+            await writeAll(merged);
+            return merged.length;
+        },
     };
 }
