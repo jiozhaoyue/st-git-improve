@@ -111,15 +111,20 @@ function appendRefreshButton(log) {
     log.append(el('<div></div>'), row);
 }
 
+let selfCheckRunning = false;
+
 /**
  * 面板自更新检查（D4-4 快捷动作之一；C-1 唯一触发点在总览快捷动作区）：
  * 读自身 manifest.homePage → origin 仓库最新 manifest 版本对比。
  * quiet=true 时失败完全静默（面板打开时的后台自动检查用，不困扰用户）。
+ * 并发保护：打开面板的自动检查与手动点击可能撞车——进行中的新调用直接忽略。
  * @param {HTMLElement} stateEl 结果内联展示位
  * @param {HTMLButtonElement} [button] 触发按钮（检查期间禁用）
  * @param {{ quiet?: boolean }} [opts]
  */
 async function runSelfUpdateCheck(stateEl, button, { quiet = false } = {}) {
+    if (selfCheckRunning) return;
+    selfCheckRunning = true;
     if (button) button.disabled = true;
     stateEl.classList.remove('stgi-hint-ok', 'stgi-hint-err', 'stgi-hint-warn');
     stateEl.textContent = t('self.checking');
@@ -151,6 +156,7 @@ async function runSelfUpdateCheck(stateEl, button, { quiet = false } = {}) {
         stateEl.textContent = t('self.checkFailed', { note: String(error?.message || error) });
         stateEl.classList.add('stgi-hint-err');
     } finally {
+        selfCheckRunning = false;
         if (button) button.disabled = false;
     }
 }
