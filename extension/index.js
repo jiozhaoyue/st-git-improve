@@ -114,10 +114,12 @@ function appendRefreshButton(log) {
 /**
  * 面板自更新检查（D4-4 快捷动作之一；C-1 唯一触发点在总览快捷动作区）：
  * 读自身 manifest.homePage → origin 仓库最新 manifest 版本对比。
+ * quiet=true 时失败完全静默（面板打开时的后台自动检查用，不困扰用户）。
  * @param {HTMLElement} stateEl 结果内联展示位
  * @param {HTMLButtonElement} [button] 触发按钮（检查期间禁用）
+ * @param {{ quiet?: boolean }} [opts]
  */
-async function runSelfUpdateCheck(stateEl, button) {
+async function runSelfUpdateCheck(stateEl, button, { quiet = false } = {}) {
     if (button) button.disabled = true;
     stateEl.classList.remove('stgi-hint-ok', 'stgi-hint-err', 'stgi-hint-warn');
     stateEl.textContent = t('self.checking');
@@ -126,6 +128,10 @@ async function runSelfUpdateCheck(stateEl, button) {
         const repo = originRepoFromHome(manifest?.homePage);
         const result = await checkSelfUpdate({ currentVersion: V, repo });
         if (!result.ok) {
+            if (quiet) {
+                stateEl.textContent = '';
+                return;
+            }
             stateEl.textContent = t('self.checkFailed', { note: result.note || '' });
             stateEl.classList.add('stgi-hint-err');
         } else if (result.upToDate) {
@@ -138,11 +144,29 @@ async function runSelfUpdateCheck(stateEl, button) {
             stateEl.parentElement.append(link);
         }
     } catch (error) {
+        if (quiet) {
+            stateEl.textContent = '';
+            return;
+        }
         stateEl.textContent = t('self.checkFailed', { note: String(error?.message || error) });
         stateEl.classList.add('stgi-hint-err');
     } finally {
         if (button) button.disabled = false;
     }
+}
+
+/** 静默自检频控（localStorage 记录上次检查时间；UI 偏好性质，丢失无损失）。 */
+const SELF_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const SELF_CHECK_LAST_KEY = 'st_git_improve_selfcheck_at';
+
+/** 面板打开时的后台自动自检（6h 频控；失败静默，不打扰）。 */
+async function autoSelfCheck(stateEl) {
+    try {
+        const last = Number(window.localStorage.getItem(SELF_CHECK_LAST_KEY) || 0);
+        if (Number.isFinite(last) && Date.now() - last < SELF_CHECK_INTERVAL_MS) return;
+        window.localStorage.setItem(SELF_CHECK_LAST_KEY, String(Date.now()));
+        await runSelfUpdateCheck(stateEl, null, { quiet: true });
+    } catch { /* 静默：自动检查绝不影响面板 */ }
 }
 
 // ---------------------------------------------------------------- 总览首屏（D4-1 三件套）
@@ -1703,6 +1727,9 @@ async function buildPanel(container) {
     extensionsZone.refresh();
     governanceZone.refresh();
     accountsZone.refresh();
+    // 打开面板时后台静默自检一次（6h 频控；手动检查不受频控）
+    const selfState = overview.querySelector('[data-role="selfState"]');
+    if (selfState) autoSelfCheck(selfState);
 
     // 分区摘要联动：账号库任何落盘（增删账号/验证/来源登记）后刷新摘要计数
     const originalSave = store.save.bind(store);

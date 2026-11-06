@@ -187,6 +187,7 @@
 .stgi-hint-ok, .stgi-hint-err, .stgi-hint-warn {
     padding: 4px 8px;
     border-left: 3px solid currentColor;
+    /* 豁免: 中性灰底条为纯 alpha 黑白叠加，无对应主题变量 */
     background: rgba(127, 127, 127, 0.12);
     border-radius: 4px;
 }

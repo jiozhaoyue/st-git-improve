@@ -48,7 +48,14 @@ export async function checkSelfUpdate({ currentVersion, repo, fetchImpl }) {
     const url = `https://api.github.com/repos/${repo}/contents/extension/manifest.json?t=${Date.now()}`;
     let response;
     try {
-        response = await f(url, { headers: { Accept: 'application/vnd.github+json' } });
+        // 有界等待（L1-MR-7）：自动/手动检查都可能挂在后台，禁止 promise 永不 settle
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        try {
+            response = await f(url, { headers: { Accept: 'application/vnd.github+json' }, signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
     } catch (error) {
         return { ok: false, current: currentVersion, note: `网络请求失败：${error.message || error}` };
     }
