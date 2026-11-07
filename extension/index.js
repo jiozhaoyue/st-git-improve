@@ -15,7 +15,7 @@ const { getSharedStore } = await import(`./src/core/accounts.js?v=${V}`);
 const { SITE_TYPES, siteKeyOf, parseRepoUrl } = await import(`./src/core/sites.js?v=${V}`);
 const { pureInstall, buildZipBytes } = await import(`./src/core/installflow.js?v=${V}`);
 const { channelHint, classifyUrl, normalizeRepoInput, repoWebUrlFromClone } = await import(`./src/core/giturl.js?v=${V}`);
-const { originRepoFromHome, checkSelfUpdate } = await import(`./src/core/selfupdate.js?v=${V}`);
+const { originRepoFromHome, checkSelfUpdate, selfExtensionName } = await import(`./src/core/selfupdate.js?v=${V}`);
 const { detectCapabilityState, can } = await import(`./src/core/capability.js?v=${V}`);
 const { t } = await import(`./src/i18n/index.js?v=${V}`);
 const { createGovernanceLog } = await import(`./src/core/governance-log.js?v=${V}`);
@@ -137,16 +137,19 @@ let selfCheckRunning = false;
  * 读自身 manifest.homePage → origin 仓库最新 manifest 版本对比。
  * quiet=true 时失败完全静默（面板打开时的后台自动检查用，不困扰用户）。
  * 并发保护：打开面板的自动检查与手动点击可能撞车——进行中的新调用直接忽略。
+ * 返回检查结果（upToDate/latest/url），调用方据此显隐「无损更新面板」按钮。
  * @param {HTMLElement} stateEl 结果内联展示位
  * @param {HTMLButtonElement} [button] 触发按钮（检查期间禁用）
  * @param {{ quiet?: boolean }} [opts]
  */
-async function runSelfUpdateCheck(stateEl, button, { quiet = false } = {}) {
-    if (selfCheckRunning) return;
+async function runSelfUpdateCheckInner(stateEl, button, { quiet = false } = {}) {
+    if (selfCheckRunning) return null;
     selfCheckRunning = true;
     if (button) button.disabled = true;
     stateEl.classList.remove('stgi-hint-ok', 'stgi-hint-err', 'stgi-hint-warn');
     stateEl.textContent = t('self.checking');
+    // 清掉上次检查遗留的「打开发布页」链接（此前会随重复检查堆叠）
+    stateEl.parentElement.querySelector('[data-role="selfReleaseLink"]')?.remove();
     try {
         const manifest = await (await fetch(new URL('./manifest.json', import.meta.url).href)).json();
         const repo = originRepoFromHome(manifest?.homePage);
@@ -154,7 +157,7 @@ async function runSelfUpdateCheck(stateEl, button, { quiet = false } = {}) {
         if (!result.ok) {
             if (quiet) {
                 stateEl.textContent = '';
-                return;
+                return result;
             }
             stateEl.textContent = t('self.checkFailed', { note: result.note || '' });
             stateEl.classList.add('stgi-hint-err');
@@ -164,20 +167,34 @@ async function runSelfUpdateCheck(stateEl, button, { quiet = false } = {}) {
         } else {
             stateEl.textContent = t('self.newVersion', { latest: result.latest, current: V });
             stateEl.classList.add('stgi-hint-warn');
-            const link = el(`<a class="stgi-btn" href="${esc(result.url)}" target="_blank" rel="noopener noreferrer">${esc(t('self.openRelease'))}</a>`);
+            const link = el(`<a class="stgi-btn" data-role="selfReleaseLink" href="${esc(result.url)}" target="_blank" rel="noopener noreferrer">${esc(t('self.openRelease'))}</a>`);
             stateEl.parentElement.append(link);
         }
+        return result;
     } catch (error) {
         if (quiet) {
             stateEl.textContent = '';
-            return;
+            return { ok: false, current: V, note: String(error?.message || error) };
         }
         stateEl.textContent = t('self.checkFailed', { note: String(error?.message || error) });
         stateEl.classList.add('stgi-hint-err');
+        return { ok: false, current: V, note: String(error?.message || error) };
     } finally {
         selfCheckRunning = false;
         if (button) button.disabled = false;
     }
+}
+
+/** 自检查结果通知（单槽，面板重建时被新装配覆盖）：快捷动作区据此显隐「无损更新面板」。 */
+let selfCheckUiHandler = null;
+
+/** runSelfUpdateCheck 对外形态：跑完把结果通知 UI（显隐自更新按钮），并原样返回结果。 */
+async function runSelfUpdateCheck(stateEl, button, opts = {}) {
+    const result = await runSelfUpdateCheckInner(stateEl, button, opts);
+    try {
+        selfCheckUiHandler?.(result);
+    } catch { /* 通知失败不影响检查结果 */ }
+    return result;
 }
 
 /** 静默自检频控（localStorage 记录上次检查时间；UI 偏好性质，丢失无损失）。 */
@@ -918,6 +935,19 @@ function buildExtensionsZone(hooks) {
         const run = card.querySelector('.stgi-repair-run');
         run.textContent = t('ext.repairRun');
         run.title = t('ext.rebuildRunTitle');
+        // 复制清单：完整挡道文件路径进剪贴板（pre 只预览前 50 条；手动清理比对用）
+        if (probe.files.length > 0) {
+            const copyListButton = el(`<button class="stgi-btn" title="${esc(t('ext.repairCopyTitle'))}">${esc(t('ext.repairCopy'))}</button>`);
+            copyListButton.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(probe.files.join('\n'));
+                    toast(t('ext.repairCopied', { count: probe.files.length }), 'success');
+                } catch (error) {
+                    toast(String(error?.message || error), 'error');
+                }
+            });
+            run.after(copyListButton);
+        }
         run.addEventListener('click', async () => {
             const confirmed = await confirmDangerous({
                 text: t('confirm.rebuildText', { name: entry.name || origin.url, count: probe.files.length }),
@@ -942,6 +972,8 @@ function buildExtensionsZone(hooks) {
      * 故探测无需事前强确认；破坏性的重建路径在回退分支与修复卡内各自强确认（D9-3）。 */
     async function runUpdate(entry, origin, button) {
         button.disabled = true;
+        const originalLabel = button.textContent;
+        button.textContent = t('ext.updateRunning'); // 进行中文案（UI 契约：长操作 disabled + 文案）
         zoneLog.style.display = '';
         zoneLog.innerHTML = '';
         // 修复卡独立于日志区（日志区 max-height 180px 会裁剪高卡片——2026-11-07 实测改出）
@@ -997,6 +1029,7 @@ function buildExtensionsZone(hooks) {
             append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
             toast(String(error.message || error), 'error');
         } finally {
+            button.textContent = originalLabel;
             applyGate(button, can('update', RT.cap));
         }
     }
@@ -1730,7 +1763,7 @@ function buildQuickActions(root, hooks) {
             <input type="file" data-role="importAllFile" accept="application/json" style="display:none" />
             <span class="stgi-note" data-role="quickState"></span>
         </div>
-        <div class="stgi-row"><span class="stgi-note" data-role="selfState"></span></div>
+        <div class="stgi-row"><span class="stgi-note" data-role="selfState" style="flex:1 1 auto"></span><button class="stgi-btn" data-act="quickSelfUpdate" style="display:none"></button></div>
         <div class="stgi-log" data-role="quickLog" style="display:none"></div>
     </div>`);
 
@@ -1844,9 +1877,97 @@ function buildQuickActions(root, hooks) {
         }
     });
 
-    // 面板自更新检查（C-1 唯一入口）
+    // 面板自更新检查（C-1 唯一入口）；检查结果经 selfCheckUiHandler 显隐「无损更新面板」
     box.querySelector('[data-act="quickSelfCheck"]').addEventListener('click', event => {
         runSelfUpdateCheck(q('selfState'), event.target);
+    });
+    const selfUpdateButton = box.querySelector('[data-act="quickSelfUpdate"]');
+    selfUpdateButton.textContent = t('self.updateAction');
+    selfUpdateButton.title = t('self.updateActionTitle');
+    selfCheckUiHandler = result => {
+        selfUpdateButton.style.display = result?.ok && result.upToDate === false ? '' : 'none';
+    };
+    applyGate(selfUpdateButton, can('update', RT.cap));
+
+    // 面板自更新执行（2026-11-07）：原生无损优先——能快进直接更新（面板文件被宿主替换，
+    // 刷新页面生效）。被拒（冲突/其它）**不自动重建**——重建面板自身属于重破坏动作且
+    // 修复卡机制在「我的扩展」行内流程里，引导过去统一强确认；无通道 → 确认后删旧重装回退。
+    selfUpdateButton.addEventListener('click', async () => {
+        const selfName = selfExtensionName(import.meta.url);
+        if (!selfName) {
+            toast(t('self.updateNameUnknown'), 'error');
+            return;
+        }
+        selfUpdateButton.disabled = true;
+        quickLog.style.display = '';
+        quickLog.innerHTML = '';
+        appendCopyLogButton(quickLog);
+        const append = (line, kind = 'plain') => appendLogLine(quickLog, line, kind);
+        try {
+            const discoverResult = await discoverCached();
+            const entry = (discoverResult.entries || []).find(e => e.name === selfName);
+            const isGlobal = entry?.scope === 'global';
+            append(t('self.updateTrying', { name: selfName }));
+            const probe = await probeNativeUpdate(selfName, { global: isGlobal });
+            if (probe.status === 'up-to-date') {
+                append(t('ext.nativeUpToDate'), 'ok');
+                toast(t('self.toastUpToDate'), 'success');
+                return;
+            }
+            if (probe.status === 'updated') {
+                append(t('ext.nativeUpdated', { hash: probe.shortCommitHash || '?' }), 'ok');
+                await RT.govLog?.append('update', selfName, t('ledger.detail.nativeUpdate', { hash: probe.shortCommitHash || '?' })).catch(() => { });
+                toast(t('self.toastUpdated'), 'success');
+                appendRefreshButton(quickLog);
+                return;
+            }
+            if (probe.status === 'no-channel') {
+                append(t('ext.noNativeChannel'), 'warn');
+                const origin = RT.store.getInstalls()[selfName];
+                if (!origin) {
+                    append(t('self.updateNoOrigin'), 'err');
+                    toast(t('self.updateNoOrigin'), 'error');
+                    return;
+                }
+                const confirmed = await confirmDangerous({
+                    text: t('self.rebuildConfirmText', { name: selfName }),
+                    danger: t('self.rebuildConfirmDanger'),
+                    okButton: t('popup.confirmUpdate'),
+                });
+                if (!confirmed) return;
+                await repairByRebuild({
+                    name: selfName,
+                    url: origin.url,
+                    branch: origin.branch || '',
+                    target: isGlobal ? 'global' : 'extension',
+                    accounts: RT.store,
+                    onLog: append,
+                });
+                await RT.govLog?.append('update', selfName, t('ledger.detail.rebuildFallback')).catch(() => { });
+                toast(t('self.toastUpdated'), 'success');
+                appendRefreshButton(quickLog);
+                return;
+            }
+            if (probe.status === 'network') {
+                append(t('ext.nativeUpdateFailed', { message: (probe.raw || '').slice(0, 200) }), 'err');
+                toast(String((probe.raw || '').slice(0, 160)), 'error');
+                return;
+            }
+            // 冲突与其余被拒形态：留痕 + 引导到行内修复卡
+            append(
+                probe.status === 'untracked-conflict' || probe.status === 'local-changes'
+                    ? t('ext.conflictDetected', { count: probe.files.length })
+                    : t('ext.nativeUpdateFailed', { message: (probe.raw || '').slice(0, 200) }),
+                'err',
+            );
+            append(t('self.updateUseRowFlow'), 'warn');
+            toast(t('self.updateUseRowFlow'));
+        } catch (error) {
+            append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
+            toast(String(error?.message || error), 'error');
+        } finally {
+            applyGate(selfUpdateButton, can('update', RT.cap));
+        }
     });
 
     // 导出全部数据（迁移备份：账号库快照 + 台账，单 JSON）

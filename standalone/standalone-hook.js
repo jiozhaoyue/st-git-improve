@@ -213,6 +213,28 @@
   router.set("GET /api/plugins/authority/ext-mgmt/capabilities", () =>
     json({ error: "not_available_in_standalone", reason: "standalone-preview", remedy: "n/a" }, 404)
   );
+
+  // 面板自更新检查的确定性演示（真实端点 api.github.com 对壳环境间歇可达，D7-2 最小 mock 收编）：
+  // 默认返回同版本（「已是最新」路径可测）；localStorage.__stgiDemoSelfUpdate = 'newer'
+  // 时返回更新版本（「有新版本 → 无损更新面板」路径可测）。
+  router.set("GET /repos/jiozhaoyue/st-git-improve/contents/extension/manifest.json", () => {
+    let newer = false;
+    try {
+      newer = localStorage.getItem("__stgiDemoSelfUpdate") === "newer";
+    } catch {
+      /* 存储不可用按同版本 */
+    }
+    const manifest = JSON.stringify({
+      display_name: "Git 源管理（补充）",
+      version: newer ? "0.9.4" : "0.9.3",
+    });
+    const bytes = new TextEncoder().encode(manifest);
+    let bin = "";
+    bytes.forEach(b => {
+      bin += String.fromCharCode(b);
+    });
+    return json({ encoding: "base64", content: btoa(bin) });
+  });
   // 旧服务端插件（本仓 plugin/ 时代）在纯前端形态不存在 → 404
   router.set("GET /api/plugins/st-git-improve/status", () =>
     json({ error: "not_available_in_standalone" }, 404)

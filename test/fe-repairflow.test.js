@@ -179,3 +179,25 @@ describe('repairflow: repairByRebuild（重建修复序列）', () => {
         );
     });
 });
+
+// ---------------------------------------------------------------- selfExtensionName（面板自更新执行的前置：自身目录名解析）
+import { selfExtensionName } from '../extension/src/core/selfupdate.js';
+
+describe('selfupdate: selfExtensionName（从模块 URL 解析自身安装目录名）', () => {
+    it('用户扩展形态：/extensions/third-party/<名>/index.js → 裸名', () => {
+        assert.equal(selfExtensionName('https://host/data/default-user/extensions/third-party/st-git-improve/index.js'), 'st-git-improve');
+    });
+
+    it('全局扩展形态：/scripts/extensions/third-party/<名>/index.js → 裸名', () => {
+        assert.equal(selfExtensionName('https://host/scripts/extensions/third-party/st-git-improve/index.js?v=0.9.3'), 'st-git-improve');
+    });
+
+    it('带 URL 编码与版本参数不破坏解析', () => {
+        assert.equal(selfExtensionName('https://host/extensions/third-party/my%20ext/index.js?v=1'), 'my ext');
+    });
+
+    it('非 extensions 路径 → null（无法确定时不猜）', () => {
+        assert.equal(selfExtensionName('https://host/somewhere/else/index.js'), null);
+        assert.equal(selfExtensionName('not-a-url'), null);
+    });
+});

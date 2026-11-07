@@ -36,6 +36,27 @@ export function compareVersions(a, b) {
 }
 
 /**
+ * 从面板模块 URL 提取本扩展的安装目录名（宿主原生更新通道需要裸目录名）。
+ * 契约：宿主以 /extensions/[third-party/]<目录名>/index.js 加载用户/全局扩展
+ * （global 形态在 /scripts 前缀下，此处只取 extensions/ 之后的首段）。
+ * @param {string} moduleUrl 面板模块自身 URL（import.meta.url）
+ * @returns {string|null} 目录名；解析失败返回 null
+ */
+export function selfExtensionName(moduleUrl) {
+    try {
+        const path = decodeURIComponent(new URL(moduleUrl).pathname);
+        const marker = '/extensions/';
+        const idx = path.lastIndexOf(marker);
+        if (idx < 0) return null;
+        const rest = path.slice(idx + marker.length).replace(/^third-party\//, '');
+        const name = rest.split('/')[0];
+        return name || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * 检查面板自身是否有新版本（读 origin 仓库的 extension/manifest.json）。
  * @param {{ currentVersion: string, repo: string, fetchImpl?: typeof fetch }} args
  * @returns {Promise<{ ok: boolean, upToDate?: boolean, latest?: string, current: string, url?: string, note?: string }>}}

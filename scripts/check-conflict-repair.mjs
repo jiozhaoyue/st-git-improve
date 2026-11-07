@@ -1,7 +1,7 @@
 // 更新冲突识别与修复——面板交互验证（2026-11-07 功能）。
 // 前置：npm run standalone（另开终端，3040）。壳的 /api/extensions/update 演示端点
 // 由 localStorage.__stgiDemoUpdateConflict 控制：'untracked' 未跟踪冲突 / 'local' 本地改动
-// 冲突 / 其余 = 无损更新成功。覆盖五案：
+// 冲突 / 其余 = 无损更新成功。覆盖六案：
 // A 无损更新成功日志  B untracked 冲突 → 修复卡+挡道清单  C 重建修复全流程（强确认→执行→台账留痕）
 // D 台账服务端状态含 repair  E local-changes 冲突识别。
 import path from 'node:path';
@@ -114,6 +114,10 @@ try {
     must(/src\/core\/conflict\.js/.test(cardState.files) && /repairflow\.js/.test(cardState.files), 'B3 挡道文件清单逐条可读');
     must(cardState.runLabel.includes('重建修复'), 'B4 重建修复入口');
     must(/挡道更新/.test(await zoneLogText()), 'B5 日志含冲突识别行');
+    must(await page.evaluate(() => {
+        const card = document.querySelector('.stgi-repair-card');
+        return [...(card?.querySelectorAll('button') || [])].some(b => b.textContent.trim() === '复制清单');
+    }), 'B6 复制清单按钮在位');
     await page.evaluate(() => document.querySelector('.stgi-repair-card')?.scrollIntoView({ block: 'center' }));
     await page.waitForTimeout(400);
     await page.screenshot({ path: 'test-results/conflict-b-repair-card.png' });
@@ -162,6 +166,45 @@ try {
     must(/本地改动与上游冲突/.test(localKind), 'E1 本地改动冲突形态识别');
     await page.evaluate(() => localStorage.removeItem('__stgiDemoUpdateConflict'));
 
+    // ---- 案 F：面板自更新执行（检查发现新版本 → 「无损更新面板」显现 → 无损更新成功留痕） ----
+    await page.evaluate(() => localStorage.setItem('__stgiDemoSelfUpdate', 'newer'));
+    await page.evaluate(() => document.querySelector('[data-act="quickSelfCheck"]')?.click());
+    let selfButtonShown = true;
+    try {
+        await page.waitForFunction(
+            () => {
+                const btn = document.querySelector('[data-act="quickSelfUpdate"]');
+                return btn && btn.style.display !== 'none';
+            },
+            null, { timeout: 20000 },
+        );
+    } catch {
+        selfButtonShown = false;
+    }
+    must(selfButtonShown, 'F1 自检发现新版本后「无损更新面板」显现');
+    await page.evaluate(() => document.querySelector('[data-act="quickSelfUpdate"]')?.click());
+    let selfUpdated = true;
+    try {
+        await page.waitForFunction(
+            () => {
+                const log = document.querySelector('[data-role="quickLog"]');
+                return log && /已无损更新到/.test(log.textContent || '');
+            },
+            null, { timeout: 15000 },
+        );
+    } catch {
+        selfUpdated = false;
+    }
+    must(selfUpdated, 'F2 自更新走原生无损路径（含 shortCommitHash）');
+    const selfLedgerOk = await page.evaluate(async () => {
+        const get = await (await fetch('/api/settings/get', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+        const settings = typeof get.settings === 'string' ? JSON.parse(get.settings) : get.settings;
+        const entries = settings?.extension_settings?.st_git_improve_governance?.entries || [];
+        return entries.some(e => e.action === 'update' && e.name === 'st-git-improve' && /原生无损更新/.test(e.detail || ''));
+    });
+    must(selfLedgerOk, 'F3 自更新台账留痕（update + 原生无损更新明细）');
+    await page.evaluate(() => localStorage.removeItem('__stgiDemoSelfUpdate'));
+
     await context.close();
 } finally {
     await browser.close();
@@ -173,4 +216,4 @@ if (failures.length > 0) {
     console.error(`\n✗ ${failures.length} 项未通过：${failures.join('；')}`);
     process.exit(1);
 }
-console.log('\n✓ 更新冲突识别与修复：五案全部通过');
+console.log('\n✓ 更新冲突识别与自更新执行：六案全部通过');
