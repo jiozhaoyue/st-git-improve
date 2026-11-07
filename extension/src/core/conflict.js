@@ -86,14 +86,12 @@ export function classifyGitError(text) {
 
     // ① 头行识别（两类清单头可同时出现——git 会一次列完；**未跟踪优先**：
     //    其修复语义「删旧重装」同样覆盖本地改动场景，故分两趟扫描而非首行即断）
-    let headerIndex = -1;
     let header = '';
     let kind = '';
     const findHeader = (pattern, kindValue) => {
         for (let i = 0; i < lines.length; i++) {
             if (pattern.test(lines[i])) {
                 kind = kindValue;
-                headerIndex = i;
                 header = lines[i].trim();
                 return true;
             }

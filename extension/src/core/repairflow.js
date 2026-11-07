@@ -20,7 +20,7 @@ export { kinds as conflictKinds };
  * 原生无损更新探测（一次尝试；调用即一次真实更新——能 ff 就已更新，被拒则无副作用）。
  * @param {string} name 扩展名（裸名，不带 third-party/ 前缀）
  * @param {{ global?: boolean }} [options]
- * @returns {Promise<{ status: 'up-to-date'|'updated'|'no-channel'|'untracked-conflict'|'local-changes'|'diverged'|'network'|'failed', files: string[], shortCommitHash: string, raw: string }>}
+ * @returns {Promise<{ status: 'up-to-date'|'updated'|'no-channel'|'untracked-conflict'|'local-changes'|'diverged'|'network'|'other'|'failed', files: string[], shortCommitHash: string, raw: string }>}
  */
 export async function probeNativeUpdate(name, { global = false } = {}) {
     const result = await hostNativeUpdate(name, global);
