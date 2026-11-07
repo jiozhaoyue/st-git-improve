@@ -866,7 +866,7 @@ function buildExtensionsZone(hooks) {
     const sortBy = list.querySelector('[data-role="sortBy"]');
     sortBy.addEventListener('change', () => refresh());
 
-    /** 修复卡挡道文件预览上限：只画前 N 条防 DOM 爆炸，完整清单走「复制日志」（2188 文件量级实测）。 */
+    /** 修复卡清单预览上限：小清单平铺、大清单按目录聚合（summarizeFileList）；完整路径走「复制清单」。 */
     const REPAIR_FILE_PREVIEW = 50;
 
     /** 删旧+重装共用引擎（no-channel 回退与重建修复同源；破坏性确认由调用方完成）。
