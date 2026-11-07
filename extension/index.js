@@ -829,11 +829,13 @@ function buildExtensionsZone(hooks) {
                 <button class="stgi-btn" data-role="staleClean"></button>
             </div>
             <div class="stgi-log" data-role="zoneLog" style="display:none"></div>
+            <div data-role="repairZone" style="display:none"></div>
         </div>`);
     box.append(list);
 
     const rows = list.querySelector('[data-role="rows"]');
     const zoneLog = list.querySelector('[data-role="zoneLog"]');
+    const repairZone = list.querySelector('[data-role="repairZone"]');
     const staleRow = list.querySelector('[data-role="staleRow"]');
     const sortBy = list.querySelector('[data-role="sortBy"]');
     sortBy.addEventListener('change', () => refresh());
@@ -927,8 +929,12 @@ function buildExtensionsZone(hooks) {
             append(`—— ${t('ext.repairTitle')} ——`);
             const okDone = await rebuildViaInstall(origin, entry, append, { repair: true, conflictCount: probe.files.length });
             if (okDone) card.remove(); else run.disabled = false;
+            if (!repairZone.firstElementChild) repairZone.style.display = 'none';
         });
-        zoneLog.append(card);
+        // 独立容器承载（不进日志区——日志 max-height 会裁剪卡片）；同列只保留最新一张
+        repairZone.innerHTML = '';
+        repairZone.style.display = '';
+        repairZone.append(card);
     }
 
     /** 行内操作：更新（2026-11-07 升级：原生无损优先 → 冲突自动分类出修复卡 → 无通道回退）。
@@ -938,6 +944,9 @@ function buildExtensionsZone(hooks) {
         button.disabled = true;
         zoneLog.style.display = '';
         zoneLog.innerHTML = '';
+        // 修复卡独立于日志区（日志区 max-height 180px 会裁剪高卡片——2026-11-07 实测改出）
+        repairZone.style.display = 'none';
+        repairZone.innerHTML = '';
         appendCopyLogButton(zoneLog);
         const append = (line, kind = 'plain') => appendLogLine(zoneLog, line, kind);
         try {
