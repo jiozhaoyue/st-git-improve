@@ -185,6 +185,21 @@
     if (mode === "nochannel") {
       return new Response("", { status: 404 });
     }
+    if (mode === "untracked-big") {
+      // 2188 文件量级演示（实测场景的清单规模）：验证修复卡的目录聚合预览
+      const files = [];
+      for (let i = 0; i < 2180; i++) files.push(`assets/img/bg_${i}.png`);
+      for (let i = 0; i < 8; i++) files.push(`docs/notes_${i}.md`);
+      return text(
+        [
+          "error: The following untracked working tree files would be overwritten by merge:",
+          ...files.map(f => `\t${f}`),
+          "Please move or remove them before you merge.",
+          "Aborting",
+        ].join("\n"),
+        500
+      );
+    }
     if (mode === "diverged") {
       return text(
         [
