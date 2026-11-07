@@ -93,14 +93,40 @@
 - 快捷动作「全部更新」前置官方 Popup 强确认：批量更新 = 逐个删旧目录重装（不可恢复
   语义），此前点击即执行；现在明示条数、红字后果与单项更新指引。
 
+### 更新冲突识别与修复（2026-11-07 深夜迭代）
+
+- **原生无损更新优先**：行内「更新」与「全部更新」改走宿主原生更新通道
+  （`POST /api/extensions/update`，ST 原生更新按钮同款；契约经随仓 ST 前端源核对、
+  Dev 实测待复核）——能快进则直接更新并**保留本地改动**，写台账「更新」动作；
+  更新被拒时 git 原地中止无副作用，故探测无需事前强确认。
+- **冲突自动识别**：`conflict.js` 纯逻辑分类器解析 git 错误原文（宿主失败响应体与后端
+  日志同源，前端可见）——「untracked/local changes working tree files would be
+  overwritten」头行 + TAB 清单逐条抽取（2188 文件量级实测样本单测覆盖）、并列头行合并
+  去重、diverged/network/other 分型。
+- **修复卡**：识别结果以独立容器卡片呈现（日志区 max-height 180px 会裁剪高卡片——
+  实测后移出）：冲突形态说明 + 挡道文件清单（前 50 条预览防 DOM 爆炸，完整清单走
+  「复制日志」）+ 备份态如实标注（纯前端无文件读取通道不可用，`repairByRebuild`
+  预留 `backupFn` 注入点供 Authority 备份通道接入）+「重建修复」官方 Popup 强确认。
+- **重建修复**：删旧目录 + 宿主重装（等效「只删冲突文件 → ff 更新」的重建形态，
+  冲突未跟踪文件随目录一并清除），完成后写台账「重建修复」动作（含挡道文件数明细）；
+  宿主无原生更新通道（404）时回退同引擎。
+- **批量全部更新同语义升级**：逐项原生优先；冲突项**不自动重建**（破坏性需逐项确认，
+  D9-3），留痕「需修复」引导到行内修复卡。
+- **亮色主题遗留项前置修正**：`check-light-theme` 的 LIGHT 映射此前把 `--SmartThemeBodyColor`
+  （文字色）设成浅色，浅底白字整体洗白；改深色文字后复核，日志/修复卡底色由纯 alpha 黑
+  改为主题自适应 `color-mix`（亮色浅灰、暗色近黑）。
+- 壳 mock `POST /api/extensions/update` + `localStorage.__stgiDemoUpdateConflict`
+  演示开关（`untracked` / `local`）；`check-conflict-repair` 五案（无损成功 / 冲突识别 /
+  重建全流程 / 台账留痕 / 本地改动冲突）入 `npm run verify`。
+
 ### 工程与验证
 
 - 新增 dev 工具族（standalone 壳零实例验证）：`shot-standalone`（UI 截图，`--multi`
   多扩展演示注入）、`inspect-styles`（计算样式抽查）、`check-input-normalize` /
   `check-iter2-interactions` / `check-register` / `check-repo-summary` / `check-iter7` /
   `check-backup` / `check-user-journey`（用户旅程）/ `check-public-install`（安装编排）/
-  `check-light-theme` / `check-mobile`（响应式/主题验证）、`shot-readme.mjs`（README
-  配图实拍）；`npm run verify` 一键串跑 9 步。
+  `check-conflict-repair`（更新冲突识别与修复五案）/ `check-light-theme` / `check-mobile`
+  （响应式/主题验证）、`shot-readme.mjs`（README 配图实拍）；`npm run verify` 一键串跑 10 步。
 - 活体 E2E 断言同步：快捷动作断言扩为五件套（+导出/导入全部数据）。
 - 旧架构脚本标注废弃（`e2e-live-dev` / `e2e-live-session` / `install-to-tavern`——
   针对已移除的 plugin/ 架构，纯前端形态下必然失败；会话注入/安装编排方法论保留
@@ -108,8 +134,10 @@
 - spec 沉淀：`.trellis/spec/guides/instance-deploy-verify.md` 新增「standalone 壳验证流程」
   与「宿主 UI 契约」两节（popup div 按钮 / checkbox 尺寸纪律 / 表格列宽 / 候选端点探测 /
   CI 文案口径 / SmartTheme 变量语义 / sticky 父元素边界）。
-- 单测 112/112（+29）；CI 六项自查通过；全部改动经 standalone 壳截图/交互验证
-  （`verify-all.mjs` 一键串跑 9 步全 PASS）；375px 窄视口实测无水平溢出。
+- 单测 133/133（+21：conflict 分类器 10 案 + repairflow 编排 11 案）；CI 六项自查通过；
+  全部改动经 standalone 壳截图/交互验证（`verify-all.mjs` 一键串跑 10 步全 PASS）；
+  375px 窄视口实测无水平溢出；亮色主题映射修正后复核（修复卡/日志底色改主题自适应
+  color-mix）。
 
 ## [0.9.2] - 2026-10-31
 
