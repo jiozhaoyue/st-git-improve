@@ -907,7 +907,8 @@ function buildExtensionsZone(hooks) {
      * 备份态如实标注：纯前端无文件读取通道不可用；Authority 备份通道接入点见 repairByRebuild 的 backupFn。 */
     function renderRepairCard(probe, origin, entry, append) {
         const kindKey = probe.status === 'untracked-conflict' ? 'ext.repairKind.untracked'
-            : probe.status === 'local-changes' ? 'ext.repairKind.localChanges' : 'ext.repairKind.other';
+            : probe.status === 'local-changes' ? 'ext.repairKind.localChanges'
+                : probe.status === 'diverged' ? 'ext.repairKind.diverged' : 'ext.repairKind.other';
         const card = el(`<div class="stgi-repair-card">
             <div class="stgi-repair-title"></div>
             <div class="stgi-repair-kind stgi-note"></div>
@@ -916,7 +917,7 @@ function buildExtensionsZone(hooks) {
                 <div class="stgi-repair-files-title"></div>
                 <pre></pre>
             </div>
-            <div class="stgi-repair-backup stgi-note"></div>
+            <div class="stgi-hint-warn stgi-repair-backup"></div>
             <div class="stgi-row">
                 <button class="stgi-btn stgi-repair-run"></button>
             </div>
@@ -1558,7 +1559,7 @@ function buildGovernanceZone(hooks) {
         try {
             const actions = await RT.govLog.list({ limit: 200 });
             const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), entries: actions }, null, 2)], { type: 'application/json' });
-            triggerDownload(URL.createObjectURL(blob), 'st-git-improve-governance.json');
+            triggerDownload(URL.createObjectURL(blob), `st-git-improve-governance-${new Date().toISOString().slice(0, 10)}.json`);
         } catch (error) {
             toast(String(error.message || error), 'error');
         }
