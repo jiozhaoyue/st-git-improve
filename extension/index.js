@@ -1731,6 +1731,7 @@ function buildHelpSection() {
         ['help.sshQ', 'help.sshA'],
         ['help.updateQ', 'help.updateA'],
         ['help.conflictQ', 'help.conflictA'],
+        ['help.selfUpdateQ', 'help.selfUpdateA'],
         ['help.hideQ', 'help.hideA'],
         ['help.staleQ', 'help.staleA'],
         ['help.dataQ', 'help.dataA'],
