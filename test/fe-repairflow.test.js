@@ -8,7 +8,9 @@ const CSRF = { 'GET /csrf-token': { token: 'test-csrf' } };
 
 function jsonResponse(data, { ok = true, status = 200 } = {}) {
     const text = async () => JSON.stringify(data);
-    return { ok, status, text, json: text };
+    // json() 按真实 Response 语义返回**已解析对象**（remote-status.requestJson 走 json()，
+    // backend.hostApi 走 text()——两种消费形态都要正确）
+    return { ok, status, text, json: async () => data };
 }
 
 function rawResponse(rawText, { status = 500 } = {}) {
@@ -199,5 +201,47 @@ describe('selfupdate: selfExtensionName（从模块 URL 解析自身安装目录
     it('非 extensions 路径 → null（无法确定时不猜）', () => {
         assert.equal(selfExtensionName('https://host/somewhere/else/index.js'), null);
         assert.equal(selfExtensionName('not-a-url'), null);
+    });
+});
+
+describe('repairflow: 重建修复后的登记 oid 同步', () => {
+    it('远端 HEAD 可取 → recordInstall 写入完整 sha（远端状态列不假阳性）', async () => {
+        const recorded = [];
+        global.fetch = stubFetch({
+            ...CSRF,
+            'POST /api/extensions/delete': 'Extension has been deleted at somewhere',
+            'POST /api/extensions/install': { status: 'installed' },
+            'GET https://api.github.com/repos/foo/bar/commits': [{ sha: 'abcdef1234567890abcdef1234567890abcdef12' }],
+        });
+        const store = fakeStore();
+        store.recordInstall = async (name, meta) => { recorded.push({ name, meta }); return { name, meta }; };
+        const result = await repairByRebuild({
+            name: 'demo',
+            url: 'https://github.com/foo/bar.git',
+            branch: 'main',
+            accounts: store,
+            onLog: () => { },
+        });
+        assert.equal(result.oid, 'abcdef1234567890abcdef1234567890abcdef12');
+        assert.equal(recorded[0]?.meta.oid, 'abcdef1234567890abcdef1234567890abcdef12');
+    });
+
+    it('远端不可达 → oid 置空（远端状态列降级为「无法比较」而非停留在旧值说谎）', async () => {
+        const recorded = [];
+        global.fetch = stubFetch({
+            ...CSRF,
+            'POST /api/extensions/delete': 'Extension has been deleted at somewhere',
+            'POST /api/extensions/install': { status: 'installed' },
+        });
+        const store = fakeStore();
+        store.recordInstall = async (name, meta) => { recorded.push({ name, meta }); return { name, meta }; };
+        const result = await repairByRebuild({
+            name: 'demo',
+            url: 'https://github.com/foo/bar.git',
+            accounts: store,
+            onLog: () => { },
+        });
+        assert.equal(result.oid, '');
+        assert.equal(recorded[0]?.meta.oid, '');
     });
 });

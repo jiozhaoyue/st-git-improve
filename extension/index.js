@@ -929,7 +929,7 @@ function buildExtensionsZone(hooks) {
             filesBox.style.display = '';
             filesBox.querySelector('.stgi-repair-files-title').textContent = t('ext.repairFilesTitle', { count: probe.files.length });
             filesBox.querySelector('pre').textContent = probe.files.slice(0, REPAIR_FILE_PREVIEW).join('\n')
-                + (probe.files.length > REPAIR_FILE_PREVIEW ? `\n… (${probe.files.length - REPAIR_FILE_PREVIEW} more)` : '');
+                + (probe.files.length > REPAIR_FILE_PREVIEW ? `\n${t('ext.repairMore', { count: probe.files.length - REPAIR_FILE_PREVIEW })}` : '');
         }
         card.querySelector('.stgi-repair-backup').textContent = t('ext.repairBackupNote');
         const run = card.querySelector('.stgi-repair-run');
@@ -993,6 +993,14 @@ function buildExtensionsZone(hooks) {
             if (probe.status === 'updated') {
                 append(t('ext.nativeUpdated', { hash: probe.shortCommitHash || '?' }), 'ok');
                 await RT.govLog?.append('update', entry.name, t('ledger.detail.nativeUpdate', { hash: probe.shortCommitHash || '?' })).catch(() => { });
+                // 登记 oid 同步为更新后的本地 HEAD（短 hash 是完整 sha 的前缀，远端状态列的前缀比较兼容），
+                // 避免登记停在旧值造成「有新版本」假阳性；取不到时置空（远端列降级为「无法比较」）
+                await RT.store.recordInstall(entry.name, {
+                    url: origin.url,
+                    branch: origin.branch || '',
+                    target: origin.target || 'extension',
+                    oid: probe.shortCommitHash || '',
+                }).catch(() => { });
                 toast(t('ext.toastNativeUpdated', { name: entry.name || origin.url }), 'success');
                 appendRefreshButton(zoneLog);
                 await refresh({ force: true });
@@ -1818,6 +1826,13 @@ function buildQuickActions(root, hooks) {
                 if (probe.status === 'updated') {
                     append(t('ext.nativeUpdated', { hash: probe.shortCommitHash || '?' }), 'ok');
                     await RT.govLog?.append('update', name, t('ledger.detail.nativeUpdate', { hash: probe.shortCommitHash || '?' })).catch(() => { });
+                    // 登记 oid 同步（同 runUpdate：短 hash 前缀兼容远端状态列比较）
+                    await RT.store.recordInstall(name, {
+                        url: origin.url,
+                        branch: origin.branch || '',
+                        target: origin.target || 'extension',
+                        oid: probe.shortCommitHash || '',
+                    }).catch(() => { });
                     okCount += 1;
                     continue;
                 }
@@ -1917,6 +1932,16 @@ function buildQuickActions(root, hooks) {
             if (probe.status === 'updated') {
                 append(t('ext.nativeUpdated', { hash: probe.shortCommitHash || '?' }), 'ok');
                 await RT.govLog?.append('update', selfName, t('ledger.detail.nativeUpdate', { hash: probe.shortCommitHash || '?' })).catch(() => { });
+                // 登记 oid 同步（同 runUpdate）
+                const selfOrigin = RT.store.getInstalls()[selfName];
+                if (selfOrigin) {
+                    await RT.store.recordInstall(selfName, {
+                        url: selfOrigin.url,
+                        branch: selfOrigin.branch || '',
+                        target: selfOrigin.target || 'extension',
+                        oid: probe.shortCommitHash || '',
+                    }).catch(() => { });
+                }
                 toast(t('self.toastUpdated'), 'success');
                 appendRefreshButton(quickLog);
                 return;

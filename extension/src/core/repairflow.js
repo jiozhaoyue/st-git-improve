@@ -12,6 +12,7 @@ const V = '0.9.3';
 const { classifyGitError, kinds } = await import(`./conflict.js?v=${V}`);
 const { hostNativeUpdate, hostDeleteExtension, hostNativeInstall } = await import(`./backend.js?v=${V}`);
 const { buildAuthedUrl } = await import(`./installflow.js?v=${V}`);
+const { fetchRemoteHead } = await import(`./remote-status.js?v=${V}`);
 
 export { kinds as conflictKinds };
 
@@ -80,8 +81,15 @@ export async function repairByRebuild({ name, url, branch, target = 'extension',
         const detail = installed.data?.error || installed.data?.raw || `HTTP ${installed.status}`;
         throw new Error(`重装失败: ${detail}`);
     }
-    // 登记回写（installedAt 刷新；登记失败不影响修复结果——来源登记本就允许补录）
-    await accounts.recordInstall(name, { url, branch: branch || '', target }).catch(() => { });
+    // 登记回写（installedAt 刷新；登记失败不影响修复结果——来源登记本就允许补录）。
+    // oid 同步：重装后本地 HEAD 即远端 HEAD，取站点 API 的远端 sha 回写，避免远端状态列
+    // 因登记 oid 停留旧值而假阳性「有新版本」（取不到 → 置空，降级为「无法比较」而非说谎）。
+    let oid = '';
+    try {
+        const head = await fetchRemoteHead(url, { branch: branch || '' });
+        oid = head.ok ? head.sha : '';
+    } catch { /* oid 同步失败不影响修复 */ }
+    await accounts.recordInstall(name, { url, branch: branch || '', target, oid }).catch(() => { });
     log('重建修复完成，刷新页面后生效');
-    return { name, mode: 'rebuild', backedUp };
+    return { name, mode: 'rebuild', backedUp, oid };
 }
