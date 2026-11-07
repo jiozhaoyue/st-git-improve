@@ -1222,17 +1222,22 @@ function buildExtensionsZone(hooks) {
                     <td class="stgi-actions-cell"></td>
                 </tr>`);
                 const actionsCell = row.querySelector('.stgi-actions-cell');
+                // 全局扩展的原生更新/删除需管理员（原生 UI 同款门禁）——非管理员灰化避免
+                // 「更新被拒 → 修复卡 → 重建 → delete 403」的死循环
+                const globalAdminGate = entry.scope === 'global' && RT.cap?.admin && !RT.cap.admin.admin
+                    ? { allowed: false, reasonKey: 'cap.reason.needAdmin' }
+                    : null;
                 if (origin) {
                     const updateButton = el(`<button class="stgi-btn" title="${esc(t('ext.updateTitle'))}">${esc(t('ext.update'))}</button>`);
                     updateButton.addEventListener('click', () => runUpdate(entry, origin, updateButton));
                     actionsCell.append(updateButton);
-                    applyGate(updateButton, can('update', RT.cap));
+                    applyGate(updateButton, globalAdminGate || can('update', RT.cap));
                     remoteTasks.push({ origin, cell: row.querySelector('[data-role="remoteCell"]') });
                 }
                 const uninstallButton = el(`<button class="stgi-btn">${esc(t('ext.uninstall'))}</button>`);
                 uninstallButton.addEventListener('click', () => runUninstall(entry, uninstallButton));
                 actionsCell.append(uninstallButton);
-                applyGate(uninstallButton, can('remove', RT.cap));
+                applyGate(uninstallButton, globalAdminGate || can('remove', RT.cap));
                 if (!origin) {
                     // 未登记来源（手动安装/其它途径装的）：补录后可用行内更新与远端检查
                     const registerButton = el(`<button class="stgi-btn" title="${esc(t('ext.registerTitle'))}">${esc(t('ext.registerSource'))}</button>`);
