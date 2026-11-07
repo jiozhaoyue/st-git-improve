@@ -127,8 +127,9 @@
   （文字色）设成浅色，浅底白字整体洗白；改深色文字后复核，日志/修复卡底色由纯 alpha 黑
   改为主题自适应 `color-mix`（亮色浅灰、暗色近黑）。
 - 壳 mock `POST /api/extensions/update` + `localStorage.__stgiDemoUpdateConflict`
-  演示开关（`untracked` / `local`）；`check-conflict-repair` 五案（无损成功 / 冲突识别 /
-  重建全流程 / 台账留痕 / 本地改动冲突）入 `npm run verify`。
+  演示开关（`untracked` / `local`）与自检确定性演示（`__stgiDemoSelfUpdate`，api.github.com
+  对壳环境间歇可达收编为 mock）；`check-conflict-repair` 七案（无损成功 / 冲突卡+复制清单 /
+  重建全流程 / 台账留痕 / 本地改动冲突 / 自更新执行 / 批量冲突不自动重建）入 `npm run verify`。
 
 ### 工程与验证
 
@@ -136,7 +137,7 @@
   多扩展演示注入）、`inspect-styles`（计算样式抽查）、`check-input-normalize` /
   `check-iter2-interactions` / `check-register` / `check-repo-summary` / `check-iter7` /
   `check-backup` / `check-user-journey`（用户旅程）/ `check-public-install`（安装编排）/
-  `check-conflict-repair`（更新冲突识别与修复五案）/ `check-light-theme` / `check-mobile`
+  `check-conflict-repair`（更新冲突识别与修复七案）/ `check-light-theme` / `check-mobile`
   （响应式/主题验证）、`shot-readme.mjs`（README 配图实拍）；`npm run verify` 一键串跑 10 步。
 - 活体 E2E 断言同步：快捷动作断言扩为五件套（+导出/导入全部数据）。
 - 旧架构脚本标注废弃（`e2e-live-dev` / `e2e-live-session` / `install-to-tavern`——
@@ -145,7 +146,7 @@
 - spec 沉淀：`.trellis/spec/guides/instance-deploy-verify.md` 新增「standalone 壳验证流程」
   与「宿主 UI 契约」两节（popup div 按钮 / checkbox 尺寸纪律 / 表格列宽 / 候选端点探测 /
   CI 文案口径 / SmartTheme 变量语义 / sticky 父元素边界）。
-- 单测 133/133（+21：conflict 分类器 10 案 + repairflow 编排 11 案）；CI 六项自查通过；
+- 单测 145/145（+33：conflict 分类器 14 案 + repairflow 编排 15 案 + selfExtensionName 4 案）；CI 六项自查通过；
   全部改动经 standalone 壳截图/交互验证（`verify-all.mjs` 一键串跑 10 步全 PASS）；
   375px 窄视口实测无水平溢出；亮色主题映射修正后复核（修复卡/日志底色改主题自适应
   color-mix）。

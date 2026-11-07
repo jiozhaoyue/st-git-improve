@@ -185,6 +185,7 @@ export const strings = {
     'confirm.updateText': '更新 {name}：将删除本地旧版目录后重装最新版。',
     'confirm.updateDanger': '扩展目录内的本地改动不会被备份，不可恢复。装 Authority 后可用 git 备份的重建式更新。',
     'confirm.rebuildText': '重建修复 {name}：将删除本地旧版目录（含 {count} 个挡道文件）后由宿主重装最新版。',
+    'confirm.rebuildTextGeneric': '重建修复 {name}：将删除本地旧版目录后由宿主重装最新版。',
     'confirm.rebuildDanger': '不可恢复：本地改动与挡道文件不会被备份。修复完成后该扩展将恢复为可正常更新的干净副本。',
     'confirm.uninstallText': '卸载 {name}：宿主将删除该扩展目录及其全部文件。',
     'confirm.uninstallDanger': '不可恢复：目录删除后需重新安装才能恢复。',

@@ -963,7 +963,9 @@ function buildExtensionsZone(hooks) {
         }
         run.addEventListener('click', async () => {
             const confirmed = await confirmDangerous({
-                text: t('confirm.rebuildText', { name: entry.name || origin.url, count: probe.files.length }),
+                text: probe.files.length > 0
+                    ? t('confirm.rebuildText', { name: entry.name || origin.url, count: probe.files.length })
+                    : t('confirm.rebuildTextGeneric', { name: entry.name || origin.url }),
                 danger: t('confirm.rebuildDanger'),
                 okButton: t('ext.repairRun'),
             });
