@@ -153,7 +153,7 @@
 - spec 沉淀：`.trellis/spec/guides/instance-deploy-verify.md` 新增「standalone 壳验证流程」
   与「宿主 UI 契约」两节（popup div 按钮 / checkbox 尺寸纪律 / 表格列宽 / 候选端点探测 /
   CI 文案口径 / SmartTheme 变量语义 / sticky 父元素边界）。
-- 单测 147/147（+35：conflict 分类器 14 案 + repairflow 编排 17 案 + selfExtensionName 4 案）；CI 六项自查通过；
+- 单测 152/152（+40：conflict 分类器 18 案 + repairflow 编排 22 案 + selfExtensionName 4 案…含真实世界变体锚定）；CI 六项自查通过；
   全部改动经 standalone 壳截图/交互验证（`verify-all.mjs` 一键串跑 10 步全 PASS）；
   375px 窄视口实测无水平溢出；亮色主题映射修正后复核（修复卡/日志底色改主题自适应
   color-mix）。

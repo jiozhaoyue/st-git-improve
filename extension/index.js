@@ -1969,13 +1969,13 @@ function buildQuickActions(root, hooks) {
             if (probe.status === 'updated') {
                 append(t('ext.nativeUpdated', { hash: probe.shortCommitHash || '?' }), 'ok');
                 await RT.govLog?.append('update', selfName, t('ledger.detail.nativeUpdate', { hash: probe.shortCommitHash || '?' })).catch(() => { });
-                // 登记 oid 同步（同 runUpdate）
+                // 登记 oid 同步（同 runUpdate）；target 用 discover 活 scope（isGlobal）
                 const selfOrigin = RT.store.getInstalls()[selfName];
                 if (selfOrigin) {
                     await RT.store.recordInstall(selfName, {
                         url: selfOrigin.url,
                         branch: selfOrigin.branch || '',
-                        target: selfOrigin.target || 'extension',
+                        target: isGlobal ? 'global' : 'extension',
                         oid: probe.shortCommitHash || '',
                     }).catch(() => { });
                 }
