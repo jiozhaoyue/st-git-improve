@@ -870,15 +870,18 @@ function buildExtensionsZone(hooks) {
     const REPAIR_FILE_PREVIEW = 50;
 
     /** 删旧+重装共用引擎（no-channel 回退与重建修复同源；破坏性确认由调用方完成）。
+     * scope 用 discover 的活值（entry.scope）而非登记的 origin.target——「迁全局/迁本地」
+     * 后登记是陈旧的，重装到错误范围会让重建白做（2026-11-08 审计修正）。
      * @returns {Promise<boolean>} 成功与否（修复卡据此决定是否移除，失败可重试）。 */
     async function rebuildViaInstall(origin, entry, append, { repair = false, conflictCount = 0, rejectedNote = '' } = {}) {
+        const liveTarget = entry.scope === 'global' ? 'global' : 'extension';
         try {
             if (repair) {
                 await repairByRebuild({
                     name: entry.name,
                     url: origin.url,
                     branch: origin.branch || '',
-                    target: origin.target || 'extension',
+                    target: liveTarget,
                     accounts: RT.store,
                     onLog: append,
                 });
@@ -895,7 +898,7 @@ function buildExtensionsZone(hooks) {
                     name: entry.name,
                     url: origin.url,
                     branch: origin.branch || '',
-                    target: origin.target || 'extension',
+                    target: liveTarget,
                     accounts: RT.store,
                     onLog: append,
                 });
@@ -1009,11 +1012,12 @@ function buildExtensionsZone(hooks) {
                 append(t('ext.nativeUpdated', { hash: probe.shortCommitHash || '?' }), 'ok');
                 await RT.govLog?.append('update', entry.name, t('ledger.detail.nativeUpdate', { hash: probe.shortCommitHash || '?' })).catch(() => { });
                 // 登记 oid 同步为更新后的本地 HEAD（短 hash 是完整 sha 的前缀，远端状态列的前缀比较兼容），
-                // 避免登记停在旧值造成「有新版本」假阳性；取不到时置空（远端列降级为「无法比较」）
+                // 避免登记停在旧值造成「有新版本」假阳性；取不到时置空（远端列降级为「无法比较」）。
+                // target 用 discover 活 scope（迁移后登记的 target 是陈旧的）
                 await RT.store.recordInstall(entry.name, {
                     url: origin.url,
                     branch: origin.branch || '',
-                    target: origin.target || 'extension',
+                    target: entry.scope === 'global' ? 'global' : 'extension',
                     oid: probe.shortCommitHash || '',
                 }).catch(() => { });
                 toast(t('ext.toastNativeUpdated', { name: entry.name || origin.url }), 'success');
@@ -1828,13 +1832,20 @@ function buildQuickActions(root, hooks) {
         appendCopyLogButton(quickLog);
         const append = (line, kind = 'plain') => appendLogLine(quickLog, line, kind);
         append(t('quick.updateTotal', { count: installs.length }));
+        // 活 scope 查表（discover 一次）：登记的 origin.target 在迁移后是陈旧的
+        const discoverResult = await discoverCached();
+        const scopeOf = name => {
+            const entry = (discoverResult.entries || []).find(e => e.name === name);
+            return entry?.scope === 'global' ? 'global' : 'extension';
+        };
         let okCount = 0;
         let needRepair = 0;
         const failed = [];
         for (const [name, origin] of installs) {
             append(`—— ${name} ——`);
+            const liveTarget = scopeOf(name);
             try {
-                const probe = await probeNativeUpdate(name, { global: origin.target === 'global' });
+                const probe = await probeNativeUpdate(name, { global: liveTarget === 'global' });
                 if (probe.status === 'up-to-date') {
                     append(t('ext.nativeUpToDate'), 'ok');
                     okCount += 1;
@@ -1847,7 +1858,7 @@ function buildQuickActions(root, hooks) {
                     await RT.store.recordInstall(name, {
                         url: origin.url,
                         branch: origin.branch || '',
-                        target: origin.target || 'extension',
+                        target: liveTarget,
                         oid: probe.shortCommitHash || '',
                     }).catch(() => { });
                     okCount += 1;
@@ -1859,7 +1870,7 @@ function buildQuickActions(root, hooks) {
                         name,
                         url: origin.url,
                         branch: origin.branch || '',
-                        target: origin.target || 'extension',
+                        target: liveTarget,
                         accounts: RT.store,
                         onLog: append,
                     });

@@ -83,11 +83,21 @@ try {
     await page.waitForSelector('.stgi-panel', { timeout: 15000 });
     await page.waitForTimeout(800);
 
-    const clickRowUpdate = () => page.evaluate(() => {
-        const row = document.querySelector('[data-zone="extensions"] .stgi-table tbody tr');
-        const btn = [...(row?.querySelectorAll('.stgi-actions-cell button') || [])].find(b => b.textContent.trim() === '更新');
-        btn?.click();
-    });
+    const clickRowUpdate = async () => {
+        // 等「更新」按钮就位（前一案的 refresh 可能正在重渲染行，占位行上没有按钮）
+        await page.waitForFunction(
+            () => {
+                const row = document.querySelector('[data-zone="extensions"] .stgi-table tbody tr');
+                return !!row && [...row.querySelectorAll('button')].some(b => b.textContent.trim() === '更新');
+            },
+            null, { timeout: 20000 },
+        );
+        await page.evaluate(() => {
+            const row = document.querySelector('[data-zone="extensions"] .stgi-table tbody tr');
+            const btn = [...(row?.querySelectorAll('.stgi-actions-cell button') || [])].find(b => b.textContent.trim() === '更新');
+            btn?.click();
+        });
+    };
     const zoneLogText = () => page.evaluate(() => document.querySelector('[data-zone="extensions"] [data-role="zoneLog"]')?.textContent || '');
 
     // ---- 案 A：无损更新成功（演示端点默认 isUpToDate:false → updated + hash） ----
