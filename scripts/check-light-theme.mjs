@@ -13,7 +13,10 @@ try {
 }
 
 const LIGHT = {
-    '--SmartThemeBodyColor': '#f2f2f2',
+    // 亮色主题语义：BlurTint/Border 为浅色底，BodyColor 是**文字色**必须为深色
+    // （此前误设 #f2f2f2 导致浅底白字整体洗白——2026-11-07 修正，journal 遗留项「真实亮色
+    // 主题环境复核语义色可读性」的前置修正）
+    '--SmartThemeBodyColor': '#1a1a1a',
     '--SmartThemeBlurTintColor': '#e8e8ea',
     '--SmartThemeBorderColor': '#c4c4c8',
     '--SmartThemeQuoteColor': '#3a62a8',

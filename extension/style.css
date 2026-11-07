@@ -141,8 +141,8 @@
     overflow: auto;
     font-family: monospace;
     font-size: 0.8em;
-    /* 豁免: 日志区暗化底为纯 alpha 黑叠加，无对应主题变量 */
-    background: rgba(0, 0, 0, 0.25);
+    /* 主题自适应底（亮色宿主下变浅灰、暗色下近黑）——比纯 alpha 黑在亮色主题可读 */
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #333) 80%, #000);
     padding: 6px;
     border-radius: 6px;
     white-space: pre-wrap;
@@ -158,8 +158,8 @@
     border: 1px solid var(--SmartThemeBorderColor, #555);
     border-left: 3px solid #f4b942; /* 豁免: 语义状态色(警告)左强调条，四宿主无语义色主题变量 */
     border-radius: 6px;
-    /* 豁免: 卡片底为纯 alpha 黑叠加，与 .stgi-log 同源语义，无对应主题变量 */
-    background: rgba(0, 0, 0, 0.25);
+    /* 主题自适应底（同 .stgi-log 语义）：亮色宿主下浅灰、暗色下近黑 */
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a1a) 80%, #000);
     padding: 8px;
     margin: 6px 0;
 }
@@ -190,8 +190,8 @@
     font-family: monospace;
     white-space: pre;
     border-radius: 4px;
-    /* 豁免: 清单区底为纯 alpha 黑叠加（日志区同源），无对应主题变量 */
-    background: rgba(0, 0, 0, 0.25);
+    /* 主题自适应底：比卡片底再深一档（亮色下更明显的清单区，暗色下同族近黑） */
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a1a) 70%, #000);
 }
 
 /* 运行环境卡：键值两列表 */
