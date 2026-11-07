@@ -875,6 +875,10 @@ function buildExtensionsZone(hooks) {
      * @returns {Promise<boolean>} 成功与否（修复卡据此决定是否移除，失败可重试）。 */
     async function rebuildViaInstall(origin, entry, append, { repair = false, conflictCount = 0, rejectedNote = '' } = {}) {
         const liveTarget = entry.scope === 'global' ? 'global' : 'extension';
+        if (origin.branch) {
+            // 分支过期提示：原生切分支后登记是陈旧的，重建按登记分支重装（诚实呈现，避免静默回退）
+            append(t('ext.rebuildBranchNote', { branch: origin.branch }));
+        }
         try {
             if (repair) {
                 await repairByRebuild({

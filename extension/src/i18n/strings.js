@@ -169,6 +169,7 @@ export const strings = {
     'ext.repairKind.other': '宿主原生更新失败（git 报错）——可尝试重建修复。',
     'ext.repairNote': '修复方式 = 删旧目录 + 宿主重装最新版（等效「只删冲突文件 → ff 更新」的重建形态），冲突未跟踪文件随目录一并清除。',
     'ext.repairBackupNote': '备份：纯前端无文件读取通道，不可用——重建将丢失全部本地改动（含挡道文件）。装 Authority 后可用备份恢复。',
+    'ext.rebuildBranchNote': '将按登记分支「{branch}」重装——若你在面板外用原生功能切过分支，登记可能过期，重建后请用原生切回。',
     'ext.repairRun': '重建修复（删旧+重装）',
     'ext.rebuildRunTitle': '重建修复：删除旧目录后由宿主重装最新版（挡道文件随目录一并清除）',
     'ext.repairCopy': '复制清单',
