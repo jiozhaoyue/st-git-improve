@@ -164,7 +164,7 @@ export const strings = {
     'ext.conflictMore': '…其余 {count} 个文件已省略——点「复制清单」取全量',
     'ext.nativeUpdateFailed': '宿主原生更新失败：{message}',
     'ext.repairTitle': '更新冲突修复',
-    'ext.repairKind.untracked': '未跟踪文件挡道更新——手动覆盖更新残留的旧版本文件，与上游新提交的路径撞车，git 拒绝合并。',
+    'ext.repairKind.untracked': '未跟踪文件挡道更新——手动覆盖更新残留的旧版本文件，与上游新提交的路径撞车，git 拒绝合并。预防复发：更新请走面板行内更新或宿主原生更新，不要手动拷贝文件覆盖。',
     'ext.repairKind.localChanges': '本地改动与上游冲突——已跟踪文件被改过，git 拒绝合并。',
     'ext.repairKind.diverged': '本地分支与上游分叉（含未完结合并）——重建可复位到远端最新。',
     'ext.repairKind.other': '宿主原生更新失败（git 报错）——可尝试重建修复。',
