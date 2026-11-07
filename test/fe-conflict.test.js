@@ -111,3 +111,46 @@ describe('conflict: classifyGitError（其余形态）', () => {
         assert.deepEqual(result.files, ['index.js']);
     });
 });
+
+// ---------------------------------------------------------------- summarizeFileList（修复卡清单预览摘要）
+import { summarizeFileList } from '../extension/src/core/conflict.js';
+
+describe('conflict: summarizeFileList（大清单按目录聚合）', () => {
+    it('小清单（≤50）平铺：lines 即逐条路径，grouped=false', () => {
+        const files = ['a.js', 'src/b.css'];
+        const summary = summarizeFileList(files);
+        assert.equal(summary.grouped, false);
+        assert.deepEqual(summary.lines, files);
+        assert.equal(summary.total, 2);
+    });
+
+    it('大清单（>50）按目录聚合：统计行降序 + 目录总数（2188 文件量级形态）', () => {
+        const files = [];
+        for (let i = 0; i < 2188; i++) files.push(`assets/img/bg_${i}.png`);
+        files.push('index.js');
+        const summary = summarizeFileList(files, { flatLimit: 50, dirGroups: 12 });
+        assert.equal(summary.grouped, true);
+        assert.equal(summary.total, 2189);
+        assert.equal(summary.dirCount, 2);
+        assert.equal(summary.lines.length, 2);
+        assert.match(summary.lines[0], /assets\/img —— 2188 个文件/);
+        assert.match(summary.lines[1], /—— 1 个文件/);
+    });
+
+    it('超过 dirGroups 上限时只保留前 N 个目录（数量多的优先）', () => {
+        const files = [];
+        for (let d = 0; d < 15; d++) {
+            for (let i = 0; i < (15 - d) * 10; i++) files.push(`dir_${d}/f${i}.js`);
+        }
+        const summary = summarizeFileList(files, { flatLimit: 50, dirGroups: 5 });
+        assert.equal(summary.lines.length, 5);
+        assert.match(summary.lines[0], /dir_0/);
+    });
+
+    it('根目录文件归入「(根目录)」桶', () => {
+        const files = Array.from({ length: 60 }, (_, i) => `file_${i}.js`);
+        const summary = summarizeFileList(files);
+        assert.equal(summary.grouped, true);
+        assert.match(summary.lines[0], /\(根目录\) —— 60 个文件/);
+    });
+});

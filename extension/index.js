@@ -21,6 +21,7 @@ const { t } = await import(`./src/i18n/index.js?v=${V}`);
 const { createGovernanceLog } = await import(`./src/core/governance-log.js?v=${V}`);
 const { fetchBranches, checkRemoteUpdate, fetchRepoInfo } = await import(`./src/core/remote-status.js?v=${V}`);
 const { probeNativeUpdate, repairByRebuild } = await import(`./src/core/repairflow.js?v=${V}`);
+const { summarizeFileList } = await import(`./src/core/conflict.js?v=${V}`);
 
 function toast(msg, kind = 'info') {
     const toastr = window.toastr;
@@ -151,7 +152,15 @@ async function runSelfUpdateCheckInner(stateEl, button, { quiet = false } = {}) 
     // 清掉上次检查遗留的「打开发布页」链接（此前会随重复检查堆叠）
     stateEl.parentElement.querySelector('[data-role="selfReleaseLink"]')?.remove();
     try {
-        const manifest = await (await fetch(new URL('./manifest.json', import.meta.url).href)).json();
+        // 有界等待（L1-MR-7）：manifest 读取挂起会让 selfCheckRunning 永久卡死，后续检查全失效
+        const manifestController = new AbortController();
+        const manifestTimer = setTimeout(() => manifestController.abort(), 10000);
+        let manifest;
+        try {
+            manifest = await (await fetch(new URL('./manifest.json', import.meta.url).href, { signal: manifestController.signal })).json();
+        } finally {
+            clearTimeout(manifestTimer);
+        }
         const repo = originRepoFromHome(manifest?.homePage);
         const result = await checkSelfUpdate({ currentVersion: V, repo });
         if (!result.ok) {
@@ -929,8 +938,11 @@ function buildExtensionsZone(hooks) {
         if (probe.files.length > 0) {
             filesBox.style.display = '';
             filesBox.querySelector('.stgi-repair-files-title').textContent = t('ext.repairFilesTitle', { count: probe.files.length });
-            filesBox.querySelector('pre').textContent = probe.files.slice(0, REPAIR_FILE_PREVIEW).join('\n')
-                + (probe.files.length > REPAIR_FILE_PREVIEW ? `\n${t('ext.repairMore', { count: probe.files.length - REPAIR_FILE_PREVIEW })}` : '');
+            // 小清单平铺；大清单按目录聚合（2188 文件量级平铺全是噪音，统计行一眼看清波及面）
+            const summary = summarizeFileList(probe.files, { flatLimit: REPAIR_FILE_PREVIEW });
+            const previewLines = [...summary.lines];
+            if (summary.grouped) previewLines.push(t('ext.repairMoreTotal', { count: summary.total, dirs: summary.dirCount }));
+            filesBox.querySelector('pre').textContent = previewLines.join('\n');
         }
         card.querySelector('.stgi-repair-backup').textContent = t('ext.repairBackupNote');
         const run = card.querySelector('.stgi-repair-run');

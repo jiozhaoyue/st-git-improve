@@ -48,6 +48,31 @@ function parseFileLine(line) {
 }
 
 /**
+ * 修复卡清单预览摘要（纯逻辑）：小清单平铺；大清单（2188 文件量级实测）平铺前 N 行
+ * 全是噪音——按目录聚合统计更有行动价值（一眼看清冲突波及面）。
+ * 文案纪律（R-15）：本函数只产出数据行，面向用户的提示语由 UI 层 i18n 拼接。
+ * @param {string[]} files 挡道文件路径全集
+ * @param {{ flatLimit?: number, dirGroups?: number }} [options]
+ * @returns {{ lines: string[], total: number, grouped: boolean, dirCount: number }}
+ *   grouped=false 时 lines 即逐条路径；grouped=true 时 lines 为「目录 —— N 个文件」统计行。
+ */
+export function summarizeFileList(files, { flatLimit = 50, dirGroups = 12 } = {}) {
+    const list = Array.isArray(files) ? files : [];
+    if (list.length <= flatLimit) {
+        return { lines: [...list], total: list.length, grouped: false, dirCount: 0 };
+    }
+    const byDir = new Map();
+    for (const f of list) {
+        const path = String(f || '');
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '(根目录)';
+        byDir.set(dir, (byDir.get(dir) || 0) + 1);
+    }
+    const groups = [...byDir.entries()].sort((a, b) => b[1] - a[1]).slice(0, dirGroups);
+    const lines = groups.map(([dir, count]) => `${dir} —— ${count} 个文件`);
+    return { lines, total: list.length, grouped: true, dirCount: byDir.size };
+}
+
+/**
  * 分类 git 错误文本，识别「未跟踪文件挡道更新」等形态并抽取冲突文件清单。
  * @param {string} text git 的 stderr/错误原文（可为空）
  * @returns {{ kind: string, files: string[], header: string }}
