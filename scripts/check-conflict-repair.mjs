@@ -1,7 +1,7 @@
 // 更新冲突识别与修复——面板交互验证（2026-11-07 功能）。
 // 前置：npm run standalone（另开终端，3040）。壳的 /api/extensions/update 演示端点
 // 由 localStorage.__stgiDemoUpdateConflict 控制：'untracked' 未跟踪冲突 / 'local' 本地改动
-// 冲突 / 其余 = 无损更新成功。覆盖七案：
+// 冲突 / 其余 = 无损更新成功。覆盖九案：
 // D 台账留痕  E local-changes 冲突  F 自更新执行  G 批量冲突不重建。
 // D 台账服务端状态含 repair  E local-changes 冲突识别。
 import path from 'node:path';
@@ -230,6 +230,38 @@ try {
     must(await page.evaluate(() => !/重建修复完成/.test(document.querySelector('[data-role="quickLog"]')?.textContent || '')), 'G2 批量流程未执行任何重建');
     await page.evaluate(() => localStorage.removeItem('__stgiDemoUpdateConflict'));
 
+    // ---- 案 H：宿主无更新通道（404）→ 回退删旧+重装（强确认 → 执行） ----
+    await page.evaluate(() => localStorage.setItem('__stgiDemoUpdateConflict', 'nochannel'));
+    await clickRowUpdate();
+    await page.waitForSelector('.stgi-popup-body', { timeout: 8000 });
+    const fallbackPopup = (await page.locator('.stgi-popup-body').textContent()).trim();
+    must(/删除本地旧版目录后重装/.test(fallbackPopup), 'H1 无通道回退的删旧重装强确认');
+    await page.evaluate(() => {
+        const btn = [...document.querySelectorAll('button, .menu_button')]
+            .find(b => /继续更新/.test(b.textContent || '') && b.offsetParent !== null);
+        btn?.click();
+    });
+    let fallbackDone = true;
+    try {
+        await page.waitForFunction(
+            () => /重建修复完成/.test(document.querySelector('[data-zone="extensions"] [data-role="zoneLog"]')?.textContent || ''),
+            null, { timeout: 15000 },
+        );
+    } catch {
+        fallbackDone = false;
+    }
+    must(fallbackDone, 'H2 回退重建执行完成');
+    await page.evaluate(() => localStorage.removeItem('__stgiDemoUpdateConflict'));
+
+    // ---- 案 I：diverged 分叉形态 → 修复卡专文案（无文件清单区） ----
+    await page.evaluate(() => localStorage.setItem('__stgiDemoUpdateConflict', 'diverged'));
+    await clickRowUpdate();
+    await page.waitForSelector('.stgi-repair-card', { timeout: 8000 });
+    const divergedKind = await page.evaluate(() => document.querySelector('.stgi-repair-card .stgi-repair-kind')?.textContent || '');
+    must(/分叉/.test(divergedKind), 'I1 分叉形态专文案');
+    must(await page.evaluate(() => document.querySelector('.stgi-repair-card .stgi-repair-files')?.style.display === 'none'), 'I2 分叉形态无文件清单区');
+    await page.evaluate(() => localStorage.removeItem('__stgiDemoUpdateConflict'));
+
     await context.close();
 } finally {
     await browser.close();
@@ -241,4 +273,4 @@ if (failures.length > 0) {
     console.error(`\n✗ ${failures.length} 项未通过：${failures.join('；')}`);
     process.exit(1);
 }
-console.log('\n✓ 更新冲突识别与自更新执行：七案全部通过');
+console.log('\n✓ 更新冲突识别与自更新执行：九案全部通过');

@@ -173,13 +173,28 @@
   // 实测契约（随仓 ST 前端源 updateExtension 核对）：成功 200 { isUpToDate, shortCommitHash }；
   // 失败非 200 → 响应体 = git 错误原文（非 JSON）。
   // 演示开关：localStorage.__stgiDemoUpdateConflict = 'untracked'（未跟踪文件挡道，
-  // 2026-11-07 实测场景）/ 'local'（本地改动冲突）；其余值 = 正常更新成功。
+  // 2026-11-07 实测场景）/ 'local'（本地改动冲突）/ 'nochannel'（宿主无更新通道 404 →
+  // 面板回退删旧重装）/ 'diverged'（分支分叉 → 修复卡专文案）；其余值 = 正常更新成功。
   router.set("POST /api/extensions/update", async () => {
     let mode = "off";
     try {
       mode = String(localStorage.getItem("__stgiDemoUpdateConflict") || "off");
     } catch {
       /* 存储不可用按正常态 */
+    }
+    if (mode === "nochannel") {
+      return new Response("", { status: 404 });
+    }
+    if (mode === "diverged") {
+      return text(
+        [
+          "From https://git.example.com/foo/bar",
+          "   1a2b3c4..5d6e7f8  main       -> origin/main",
+          "hint: You have divergent branches and need to specify how to reconcile them.",
+          "fatal: Need to specify how to reconcile divergent branches.",
+        ].join("\n"),
+        500
+      );
     }
     if (mode === "untracked") {
       return text(
