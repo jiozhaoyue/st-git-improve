@@ -92,6 +92,16 @@ try {
             },
             null, { timeout: 20000 },
         );
+        // 等 refresh 收尾（远端状态检查完成）——期间 zoneUpdateRunning 仍为 true，
+        // 此时点击会命中「已有更新任务进行中」守卫而不出卡片
+        await page.waitForFunction(
+            () => {
+                const cell = document.querySelector('[data-zone="extensions"] [data-role="remoteCell"]');
+                return !!cell && cell.textContent !== '检查中…';
+            },
+            null, { timeout: 30000 },
+        );
+        await page.waitForTimeout(300);
         await page.evaluate(() => {
             const row = document.querySelector('[data-zone="extensions"] .stgi-table tbody tr');
             const btn = [...(row?.querySelectorAll('.stgi-actions-cell button') || [])].find(b => b.textContent.trim() === '更新');
