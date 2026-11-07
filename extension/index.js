@@ -869,8 +869,7 @@ function buildExtensionsZone(hooks) {
     /** 修复卡清单预览上限：小清单平铺、大清单按目录聚合（summarizeFileList）；完整路径走「复制清单」。 */
     const REPAIR_FILE_PREVIEW = 50;
 
-    /** 分区内更新并发守卫：zoneLog/repairZone 是本区共享的，并发更新会互相清空对方的日志与修复卡。 */
-    let zoneUpdateRunning = false;
+    // 更新并发守卫 zoneUpdateRunning 为模块级（见文件顶部声明）
 
     /** 删旧+重装共用引擎（no-channel 回退与重建修复同源；破坏性确认由调用方完成）。
      * scope 用 discover 的活值（entry.scope）而非登记的 origin.target——「迁全局/迁本地」
@@ -1716,6 +1715,10 @@ async function confirmDangerous(options) {
 
 // ---------------------------------------------------------------- 面板装配（总览 + 三区；D4-1/D4-2）
 
+/** 更新任务并发守卫（模块级）：行内更新 / 修复卡重建 / 批量全部更新 / 面板自更新共用——
+ * 它们共享宿主 git 与登记存储，且「我的扩展」的 zoneLog/repairZone 会被并发流程互相清空。 */
+let zoneUpdateRunning = false;
+
 /** 台账动作徽标着色（disable/enable/uninstall/install/dedupClean/move/update/repair；未列出的不着色）。 */
 const LEDGER_BADGE = { disable: 'warn', enable: 'good', uninstall: 'bad', install: 'good', dedupClean: 'warn', update: 'good', repair: 'warn' };
 
@@ -1854,6 +1857,11 @@ function buildQuickActions(root, hooks) {
             okButton: t('popup.confirmUpdate'),
         });
         if (!confirmed) return;
+        if (zoneUpdateRunning) {
+            toast(t('ext.updateBusy'), 'error');
+            return;
+        }
+        zoneUpdateRunning = true;
         button.disabled = true;
         quickState.textContent = t('quick.updating');
         quickLog.style.display = '';
@@ -1862,7 +1870,13 @@ function buildQuickActions(root, hooks) {
         const append = (line, kind = 'plain') => appendLogLine(quickLog, line, kind);
         append(t('quick.updateTotal', { count: installs.length }));
         // 活 scope 查表（discover 一次）：登记的 origin.target 在迁移后是陈旧的
-        const discoverResult = await discoverCached();
+        let discoverResult;
+        try {
+            discoverResult = await discoverCached();
+        } catch (error) {
+            zoneUpdateRunning = false;
+            throw error;
+        }
         const scopeOf = name => {
             const entry = (discoverResult.entries || []).find(e => e.name === name);
             return entry?.scope === 'global' ? 'global' : 'extension';
@@ -1931,6 +1945,7 @@ function buildQuickActions(root, hooks) {
         toast(t('quick.updateSummary', { ok: okCount, failed: failed.length }), failed.length > 0 ? 'error' : 'success');
         await hooks.scanExtensions?.({ force: true });
         applyGate(button, can('update', RT.cap));
+        zoneUpdateRunning = false;
     });
 
     // 全量扫描（C-1 唯一入口）：我的扩展三维 + 治理去重，完成后回写分区摘要
@@ -1971,6 +1986,11 @@ function buildQuickActions(root, hooks) {
             toast(t('self.updateNameUnknown'), 'error');
             return;
         }
+        if (zoneUpdateRunning) {
+            toast(t('ext.updateBusy'), 'error');
+            return;
+        }
+        zoneUpdateRunning = true;
         selfUpdateButton.disabled = true;
         quickLog.style.display = '';
         quickLog.innerHTML = '';
@@ -2054,6 +2074,7 @@ function buildQuickActions(root, hooks) {
             append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
             toast(String(error?.message || error), 'error');
         } finally {
+            zoneUpdateRunning = false;
             applyGate(selfUpdateButton, can('update', RT.cap));
         }
     });
