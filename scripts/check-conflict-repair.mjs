@@ -1,8 +1,8 @@
 // 更新冲突识别与修复——面板交互验证（2026-11-07 功能）。
 // 前置：npm run standalone（另开终端，3040）。壳的 /api/extensions/update 演示端点
 // 由 localStorage.__stgiDemoUpdateConflict 控制：'untracked' 未跟踪冲突 / 'local' 本地改动
-// 冲突 / 其余 = 无损更新成功。覆盖六案：
-// A 无损更新成功日志  B untracked 冲突 → 修复卡+挡道清单  C 重建修复全流程（强确认→执行→台账留痕）
+// 冲突 / 其余 = 无损更新成功。覆盖七案：
+// D 台账留痕  E local-changes 冲突  F 自更新执行  G 批量冲突不重建。
 // D 台账服务端状态含 repair  E local-changes 冲突识别。
 import path from 'node:path';
 import fs from 'node:fs';
@@ -205,6 +205,31 @@ try {
     must(selfLedgerOk, 'F3 自更新台账留痕（update + 原生无损更新明细）');
     await page.evaluate(() => localStorage.removeItem('__stgiDemoSelfUpdate'));
 
+    // ---- 案 G：批量全部更新不自动重建（冲突项留痕引导，D9-3 破坏性需逐项确认） ----
+    await page.evaluate(() => localStorage.setItem('__stgiDemoUpdateConflict', 'untracked'));
+    await page.evaluate(() => document.querySelector('[data-act="quickUpdateAll"]')?.click());
+    await page.waitForSelector('.stgi-popup-body', { timeout: 8000 });
+    await page.evaluate(() => {
+        const btn = [...document.querySelectorAll('button, .menu_button')]
+            .find(b => /继续更新/.test(b.textContent || '') && b.offsetParent !== null);
+        btn?.click();
+    });
+    let batchMarked = true;
+    try {
+        await page.waitForFunction(
+            () => {
+                const log = document.querySelector('[data-role="quickLog"]');
+                return log && /不自动重建/.test(log.textContent || '');
+            },
+            null, { timeout: 20000 },
+        );
+    } catch {
+        batchMarked = false;
+    }
+    must(batchMarked, 'G1 冲突项留痕「不自动重建」引导');
+    must(await page.evaluate(() => !/重建修复完成/.test(document.querySelector('[data-role="quickLog"]')?.textContent || '')), 'G2 批量流程未执行任何重建');
+    await page.evaluate(() => localStorage.removeItem('__stgiDemoUpdateConflict'));
+
     await context.close();
 } finally {
     await browser.close();
@@ -216,4 +241,4 @@ if (failures.length > 0) {
     console.error(`\n✗ ${failures.length} 项未通过：${failures.join('；')}`);
     process.exit(1);
 }
-console.log('\n✓ 更新冲突识别与自更新执行：六案全部通过');
+console.log('\n✓ 更新冲突识别与自更新执行：七案全部通过');

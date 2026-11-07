@@ -245,3 +245,19 @@ describe('repairflow: 重建修复后的登记 oid 同步', () => {
         assert.equal(recorded[0]?.meta.oid, '');
     });
 });
+
+describe('repairflow: probeNativeUpdate 其余宿主形态', () => {
+    it('403（无权限，如非管理员更新全局扩展）→ other（raw 透传）', async () => {
+        global.fetch = stubFetch({ ...CSRF, 'POST /api/extensions/update': { __raw: 'You don\'t have permission to update global extensions.', __status: 403 } });
+        const result = await probeNativeUpdate('demo', { global: true });
+        assert.equal(result.status, 'other');
+        assert.match(result.raw, /permission/);
+    });
+
+    it('200 但 isUpToDate 缺字段 → updated（与原生 UI 同为 truthy 判定，hash 缺失显示 ?）', async () => {
+        global.fetch = stubFetch({ ...CSRF, 'POST /api/extensions/update': {} });
+        const result = await probeNativeUpdate('demo');
+        assert.equal(result.status, 'updated');
+        assert.equal(result.shortCommitHash, '');
+    });
+});

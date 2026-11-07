@@ -1560,6 +1560,7 @@ function buildGovernanceZone(hooks) {
             const actions = await RT.govLog.list({ limit: 200 });
             const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), entries: actions }, null, 2)], { type: 'application/json' });
             triggerDownload(URL.createObjectURL(blob), `st-git-improve-governance-${new Date().toISOString().slice(0, 10)}.json`);
+            toast(t('gov.toastLedgerExported', { count: actions.length }), 'success');
         } catch (error) {
             toast(String(error.message || error), 'error');
         }
@@ -1900,6 +1901,7 @@ function buildQuickActions(root, hooks) {
     const selfUpdateButton = box.querySelector('[data-act="quickSelfUpdate"]');
     selfUpdateButton.textContent = t('self.updateAction');
     selfUpdateButton.title = t('self.updateActionTitle');
+    const selfState = q('selfState');
     selfCheckUiHandler = result => {
         selfUpdateButton.style.display = result?.ok && result.upToDate === false ? '' : 'none';
     };
@@ -1943,6 +1945,11 @@ function buildQuickActions(root, hooks) {
                         oid: probe.shortCommitHash || '',
                     }).catch(() => { });
                 }
+                // 自检行状态同步：更新成功后旧「有新版本」提示已过期
+                selfState.classList.remove('stgi-hint-warn', 'stgi-hint-err');
+                selfState.classList.add('stgi-hint-ok');
+                selfState.textContent = t('self.updatedState', { hash: probe.shortCommitHash || '?' });
+                selfUpdateButton.style.display = 'none';
                 toast(t('self.toastUpdated'), 'success');
                 appendRefreshButton(quickLog);
                 return;

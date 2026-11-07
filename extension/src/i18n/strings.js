@@ -99,6 +99,7 @@ export const strings = {
     'self.rebuildConfirmDanger': '不可恢复：面板目录内的本地改动不会被备份。重装期间面板不可用，完成后刷新页面即可。',
     'self.toastUpToDate': '面板已是最新',
     'self.toastUpdated': '面板已更新（刷新页面生效）',
+    'self.updatedState': '已无损更新到 {hash}（刷新页面生效）',
 
     // ---- 分区一：我的扩展（D5-1 常驻列表 + 顶部安装入口；D5-4 三维+灰化列） ----
     'ext.title': '我的扩展',
@@ -219,6 +220,7 @@ export const strings = {
     'gov.versionUnknown': '?',
     'gov.ledgerToggle': '治理台账',
     'gov.ledgerExport': '导出台账',
+    'gov.toastLedgerExported': '已导出 {count} 条台账记录',
     'gov.ledgerClear': '清空台账',
     'gov.ledgerCleared': '台账已清空',
     'gov.ledgerFilterAll': '全部动作',
