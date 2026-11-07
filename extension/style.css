@@ -148,9 +148,11 @@
     white-space: pre-wrap;
 }
 
-.stgi-log-line.ok { color: #6bcb77; } /* 豁免: 语义状态色(成功)，四宿主无语义色主题变量 */
-.stgi-log-line.err { color: #ff6b6b; } /* 豁免: 语义状态色(错误)，四宿主无语义色主题变量 */
-.stgi-log-line.warn { color: #f4b942; } /* 豁免: 语义状态色(警告)，四宿主无语义色主题变量 */
+/* 语义状态色主题自适应：向主题文字色（BodyColor——暗色主题为浅色/亮色主题为深色）mix 25%，
+   暗色下提亮、亮色下压深，双向增强对比（2026-11-07；基色经暗色主题调校，豁免同前） */
+.stgi-log-line.ok { color: color-mix(in srgb, var(--SmartThemeBodyColor, #f2f2f2) 25%, #6bcb77); } /* 豁免: 语义状态色(成功) */
+.stgi-log-line.err { color: color-mix(in srgb, var(--SmartThemeBodyColor, #f2f2f2) 25%, #ff6b6b); } /* 豁免: 语义状态色(错误) */
+.stgi-log-line.warn { color: color-mix(in srgb, var(--SmartThemeBodyColor, #f2f2f2) 25%, #f4b942); } /* 豁免: 语义状态色(警告) */
 
 /* 更新冲突修复卡（2026-11-07）：原生更新被拒时的识别结果与重建入口。
    卡内 pre 清单可横向滚动，防止长路径撑破抽屉（375px 无溢出纪律） */
@@ -221,9 +223,9 @@
     word-break: break-all;
 }
 
-.stgi-kv-v.good { color: #6bcb77; } /* 豁免: 语义状态色(成功)，四宿主无语义色主题变量 */
-.stgi-kv-v.bad { color: #ff6b6b; } /* 豁免: 语义状态色(错误)，四宿主无语义色主题变量 */
-.stgi-kv-v.warn { color: #f4b942; } /* 豁免: 语义状态色(警告)，四宿主无语义色主题变量 */
+.stgi-kv-v.good { color: color-mix(in srgb, var(--SmartThemeBodyColor, #f2f2f2) 25%, #6bcb77); } /* 豁免: 语义状态色(成功)，主题自适应同 .stgi-log-line */
+.stgi-kv-v.bad { color: color-mix(in srgb, var(--SmartThemeBodyColor, #f2f2f2) 25%, #ff6b6b); } /* 豁免: 语义状态色(错误) */
+.stgi-kv-v.warn { color: color-mix(in srgb, var(--SmartThemeBodyColor, #f2f2f2) 25%, #f4b942); } /* 豁免: 语义状态色(警告) */
 
 /* 安装页通道提示着色（左强调条 + 中性底条：亮色宿主主题下裸色字对比度不足，加底衬托） */
 .stgi-hint-ok, .stgi-hint-err, .stgi-hint-warn {
