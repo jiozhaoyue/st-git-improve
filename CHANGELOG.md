@@ -95,16 +95,21 @@
 
 ### 工程与验证
 
-- 新增 dev 工具族（standalone 壳零实例验证）：`shot-standalone`（UI 截图）、
-  `inspect-styles`（计算样式抽查）、`check-input-normalize` / `check-iter2-interactions` /
-  `check-register` / `check-repo-summary` / `check-iter7` / `check-backup` /
-  `check-light-theme` / `check-mobile`（各交互闭环与响应式/主题验证）、
-  `shot-readme.mjs`（README 配图实拍）。
+- 新增 dev 工具族（standalone 壳零实例验证）：`shot-standalone`（UI 截图，`--multi`
+  多扩展演示注入）、`inspect-styles`（计算样式抽查）、`check-input-normalize` /
+  `check-iter2-interactions` / `check-register` / `check-repo-summary` / `check-iter7` /
+  `check-backup` / `check-user-journey`（用户旅程）/ `check-public-install`（安装编排）/
+  `check-light-theme` / `check-mobile`（响应式/主题验证）、`shot-readme.mjs`（README
+  配图实拍）；`npm run verify` 一键串跑 9 步。
+- 活体 E2E 断言同步：快捷动作断言扩为五件套（+导出/导入全部数据）。
+- 旧架构脚本标注废弃（`e2e-live-dev` / `e2e-live-session` / `install-to-tavern`——
+  针对已移除的 plugin/ 架构，纯前端形态下必然失败；会话注入/安装编排方法论保留
+  供 Authority 集成参考）。
 - spec 沉淀：`.trellis/spec/guides/instance-deploy-verify.md` 新增「standalone 壳验证流程」
   与「宿主 UI 契约」两节（popup div 按钮 / checkbox 尺寸纪律 / 表格列宽 / 候选端点探测 /
-  CI 文案口径）。
+  CI 文案口径 / SmartTheme 变量语义 / sticky 父元素边界）。
 - 单测 112/112（+29）；CI 六项自查通过；全部改动经 standalone 壳截图/交互验证
-  （`verify-all.mjs` 一键串跑 8 步全 PASS）；375px 窄视口实测无水平溢出。
+  （`verify-all.mjs` 一键串跑 9 步全 PASS）；375px 窄视口实测无水平溢出。
 
 ## [0.9.2] - 2026-10-31
 
