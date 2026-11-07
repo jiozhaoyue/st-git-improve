@@ -869,6 +869,9 @@ function buildExtensionsZone(hooks) {
     /** 修复卡清单预览上限：小清单平铺、大清单按目录聚合（summarizeFileList）；完整路径走「复制清单」。 */
     const REPAIR_FILE_PREVIEW = 50;
 
+    /** 分区内更新并发守卫：zoneLog/repairZone 是本区共享的，并发更新会互相清空对方的日志与修复卡。 */
+    let zoneUpdateRunning = false;
+
     /** 删旧+重装共用引擎（no-channel 回退与重建修复同源；破坏性确认由调用方完成）。
      * scope 用 discover 的活值（entry.scope）而非登记的 origin.target——「迁全局/迁本地」
      * 后登记是陈旧的，重装到错误范围会让重建白做（2026-11-08 审计修正）。
@@ -981,9 +984,15 @@ function buildExtensionsZone(hooks) {
                 okButton: t('ext.repairRun'),
             });
             if (!confirmed) return;
+            if (zoneUpdateRunning) {
+                toast(t('ext.updateBusy'), 'error');
+                return;
+            }
+            zoneUpdateRunning = true;
             run.disabled = true;
             append(`—— ${t('ext.repairTitle')} ——`);
             const okDone = await rebuildViaInstall(origin, entry, append, { repair: true, conflictCount: probe.files.length });
+            zoneUpdateRunning = false;
             if (okDone) card.remove(); else run.disabled = false;
             if (!repairZone.firstElementChild) repairZone.style.display = 'none';
         });
@@ -997,6 +1006,11 @@ function buildExtensionsZone(hooks) {
      * 原生更新 = 服务端 git fetch+merge（能快进则保留本地改动；被拒则 git 原地中止，无副作用），
      * 故探测无需事前强确认；破坏性的重建路径在回退分支与修复卡内各自强确认（D9-3）。 */
     async function runUpdate(entry, origin, button) {
+        if (zoneUpdateRunning) {
+            toast(t('ext.updateBusy'), 'error');
+            return;
+        }
+        zoneUpdateRunning = true;
         button.disabled = true;
         const originalLabel = button.textContent;
         button.textContent = t('ext.updateRunning'); // 进行中文案（UI 契约：长操作 disabled + 文案）
@@ -1064,6 +1078,7 @@ function buildExtensionsZone(hooks) {
             append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
             toast(String(error.message || error), 'error');
         } finally {
+            zoneUpdateRunning = false;
             button.textContent = originalLabel;
             applyGate(button, can('update', RT.cap));
         }

@@ -147,6 +147,7 @@ export const strings = {
     'ext.update': '更新',
     'ext.updateTitle': '优先无损原生更新（能快进则保留本地改动）；被 git 拒绝时自动识别冲突并列出挡道文件，引导重建修复',
     'ext.updateRunning': '更新中…',
+    'ext.updateBusy': '已有更新任务进行中——请等它完成再操作',
     'ext.uninstall': '卸载',
     'ext.moveToGlobal': '迁全局',
     'ext.moveToLocal': '迁本地',
