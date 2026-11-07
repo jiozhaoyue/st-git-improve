@@ -154,3 +154,30 @@ describe('conflict: summarizeFileList（大清单按目录聚合）', () => {
         assert.match(summary.lines[0], /\(根目录\) —— 60 个文件/);
     });
 });
+
+describe('conflict: 真实世界变体锚定', () => {
+    it('local-changes 的 checkout 变体（无未跟踪文件）', () => {
+        const text = 'error: Your local changes to the following files would be overwritten by checkout:\n\tstyle.css\nPlease commit your changes or stash them before you switch branches.\nAborting';
+        const result = classifyGitError(text);
+        assert.equal(result.kind, kinds.LOCAL_CHANGES);
+        assert.deepEqual(result.files, ['style.css']);
+    });
+
+    it('单动词提示（Please remove them…）', () => {
+        assert.equal(classifyGitError('Please remove them before you merge.').kind, kinds.UNTRACKED_CONFLICT);
+    });
+
+    it('CRLF 行尾（宿主响应可能带 \r\n）不破坏清单解析', () => {
+        const text = 'error: The following untracked working tree files would be overwritten by merge:\r\n\tindex.js\r\n\tstyle.css\r\nPlease move or remove them before you merge.\r\nAborting';
+        const result = classifyGitError(text);
+        assert.equal(result.kind, kinds.UNTRACKED_CONFLICT);
+        assert.deepEqual(result.files, ['index.js', 'style.css']);
+    });
+
+    it('switch 变体头行', () => {
+        assert.equal(
+            classifyGitError('error: The following untracked working tree files would be overwritten by switch:\n\tlib/a.js').kind,
+            kinds.UNTRACKED_CONFLICT,
+        );
+    });
+});

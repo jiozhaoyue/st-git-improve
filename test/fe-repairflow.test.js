@@ -298,3 +298,28 @@ describe('repairflow: 删除通道 global 标志（原生 UI 同款契约）', (
         assert.equal(deleteBody.global, false);
     });
 });
+
+describe('repairflow: probeNativeUpdate 响应形态兜底', () => {
+    it('500 + JSON { error: 冲突原文 }（代理/宿主包装形态）也能分类', async () => {
+        global.fetch = stubFetch({
+            ...CSRF,
+            'POST /api/extensions/update': { error: 'error: The following untracked working tree files would be overwritten by merge:\n\tindex.js\nPlease move or remove them before you merge.\nAborting' },
+            // 注意：stub 的对象命中走 jsonResponse → JSON 200 ok… 这里需要显式 500
+        });
+        // 上行 stub 会按 200 返回——改用 __raw 模拟同语义：宿主 500 纯文本是主形态，
+        // JSON error 字段兜底由 rawText/raw/error 读取顺序保证，此处以单测锁 error 读取链
+        global.fetch = async (url, init = {}) => {
+            await Promise.resolve();
+            const method = (init.method || 'GET').toUpperCase();
+            if (method === 'GET' && String(url).includes('csrf-token')) {
+                const text = async () => JSON.stringify({ token: 't' });
+                return { ok: true, status: 200, text, json: async () => ({ token: 't' }) };
+            }
+            const text = async () => JSON.stringify({ error: 'error: The following untracked working tree files would be overwritten by merge:\n\tindex.js\nAborting' });
+            return { ok: false, status: 500, text, json: async () => ({ error: 'error: The following untracked working tree files would be overwritten by merge:\n\tindex.js\nAborting' }) };
+        };
+        const result = await probeNativeUpdate('demo');
+        assert.equal(result.status, 'untracked-conflict');
+        assert.deepEqual(result.files, ['index.js']);
+    });
+});
