@@ -1067,7 +1067,8 @@ function buildExtensionsZone(hooks) {
         if (!confirmed) return;
         button.disabled = true;
         try {
-            const result = await hostDeleteExtension(entry.name);
+            // 全局扩展必须显式传 global（原生 UI 同款）——省略时服务端可能默认删本地目录
+            const result = await hostDeleteExtension(entry.name, entry.scope === 'global');
             if (!result.ok) {
                 throw new Error(result.note || t('gov.opFailed'));
             }

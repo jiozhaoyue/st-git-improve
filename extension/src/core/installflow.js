@@ -143,7 +143,8 @@ export async function pureInstall({ url, branch, target = 'extension', replace =
     // /api/extensions/delete 可删除本地扩展目录（扩展目录内的本地改动不会备份）。
     if (!result.ok && replace && /already exists/i.test(String(result.data?.raw || result.data?.error || ''))) {
         log('目录已存在 —— 按「更新」流程：删除旧目录（本地改动不备份）后重装…');
-        const deleted = await hostDeleteExtension(repo.repo);
+        // 全局扩展必须显式传 global（原生 UI 同款）——省略时服务端可能默认删本地目录
+        const deleted = await hostDeleteExtension(repo.repo, target === 'global');
         if (!deleted.ok) {
             throw new Error(`删除旧版失败: ${deleted.note}`);
         }

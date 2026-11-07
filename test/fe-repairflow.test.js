@@ -261,3 +261,40 @@ describe('repairflow: probeNativeUpdate 其余宿主形态', () => {
         assert.equal(result.shortCommitHash, '');
     });
 });
+
+describe('repairflow: 删除通道 global 标志（原生 UI 同款契约）', () => {
+    it('重建修复全局扩展 → delete 请求体显式带 global:true', async () => {
+        const calls = [];
+        global.fetch = stubFetch({
+            ...CSRF,
+            'POST /api/extensions/delete': 'Extension has been deleted at somewhere',
+            'POST /api/extensions/install': { status: 'installed' },
+        }, { calls });
+        await repairByRebuild({
+            name: 'demo',
+            url: 'https://git.example.com/foo/bar.git',
+            target: 'global',
+            accounts: fakeStore(),
+            onLog: () => { },
+        });
+        const deleteBody = calls.find(c => c.key === 'POST /api/extensions/delete')?.body;
+        assert.deepEqual(deleteBody, { extensionName: 'demo', global: true });
+    });
+
+    it('本地扩展重建 → delete 请求体 global:false（显式而非省略）', async () => {
+        const calls = [];
+        global.fetch = stubFetch({
+            ...CSRF,
+            'POST /api/extensions/delete': 'Extension has been deleted at somewhere',
+            'POST /api/extensions/install': { status: 'installed' },
+        }, { calls });
+        await repairByRebuild({
+            name: 'demo',
+            url: 'https://git.example.com/foo/bar.git',
+            accounts: fakeStore(),
+            onLog: () => { },
+        });
+        const deleteBody = calls.find(c => c.key === 'POST /api/extensions/delete')?.body;
+        assert.equal(deleteBody.global, false);
+    });
+});

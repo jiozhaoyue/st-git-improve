@@ -65,7 +65,7 @@ export async function repairByRebuild({ name, url, branch, target = 'extension',
         log('备份不可用（纯前端无文件读取通道）——跳过备份');
     }
     log('删除旧版目录…');
-    const deleted = await hostDeleteExtension(name);
+    const deleted = await hostDeleteExtension(name, target === 'global');
     if (!deleted.ok) {
         throw new Error(`删除旧版失败: ${deleted.note}`);
     }
