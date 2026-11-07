@@ -126,8 +126,9 @@ try {
     must(/挡道更新/.test(await zoneLogText()), 'B5 日志含冲突识别行');
     must(await page.evaluate(() => {
         const card = document.querySelector('.stgi-repair-card');
-        return [...(card?.querySelectorAll('button') || [])].some(b => b.textContent.trim() === '复制清单');
-    }), 'B6 复制清单按钮在位');
+        const labels = [...(card?.querySelectorAll('button') || [])].map(b => b.textContent.trim());
+        return labels.includes('复制清单') && labels.includes('重试检查');
+    }), 'B6 复制清单/重试检查按钮在位');
     await page.evaluate(() => document.querySelector('.stgi-repair-card')?.scrollIntoView({ block: 'center' }));
     await page.waitForTimeout(400);
     await page.screenshot({ path: 'test-results/conflict-b-repair-card.png' });

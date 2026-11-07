@@ -921,7 +921,7 @@ function buildExtensionsZone(hooks) {
 
     /** 修复卡：冲突识别结果 + 挡道文件清单 + 重建修复入口（官方 Popup 强确认，D9-3）。
      * 备份态如实标注：纯前端无文件读取通道不可用；Authority 备份通道接入点见 repairByRebuild 的 backupFn。 */
-    function renderRepairCard(probe, origin, entry, append) {
+    function renderRepairCard(probe, origin, entry, append, rowButton) {
         const kindKey = probe.status === 'untracked-conflict' ? 'ext.repairKind.untracked'
             : probe.status === 'local-changes' ? 'ext.repairKind.localChanges'
                 : probe.status === 'diverged' ? 'ext.repairKind.diverged' : 'ext.repairKind.other';
@@ -968,6 +968,10 @@ function buildExtensionsZone(hooks) {
             });
             run.after(copyListButton);
         }
+        // 重试检查：手动处理挡道文件后原地重新探测（runUpdate 自会清空修复区与日志）
+        const retryButton = el(`<button class="stgi-btn" title="${esc(t('ext.repairRetryTitle'))}">${esc(t('ext.repairRetry'))}</button>`);
+        retryButton.addEventListener('click', () => runUpdate(entry, origin, rowButton));
+        run.after(retryButton);
         run.addEventListener('click', async () => {
             const confirmed = await confirmDangerous({
                 text: probe.files.length > 0
@@ -1055,7 +1059,7 @@ function buildExtensionsZone(hooks) {
             } else {
                 append(t('ext.nativeUpdateFailed', { message: (probe.raw || '').slice(0, 200) }), 'err');
             }
-            renderRepairCard(probe, origin, entry, append);
+            renderRepairCard(probe, origin, entry, append, button);
         } catch (error) {
             append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
             toast(String(error.message || error), 'error');
