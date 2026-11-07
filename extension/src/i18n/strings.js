@@ -176,7 +176,6 @@ export const strings = {
     'ext.repairCopyTitle': '复制全部挡道文件路径到剪贴板（逐行，供手动清理比对）',
     'ext.repairCopied': '已复制 {count} 个挡道文件路径',
     'ext.repairFilesTitle': '挡道文件清单（{count} 个）',
-    'ext.repairMore': '…其余 {count} 个（点「复制清单」取全量）',
     'ext.repairMoreTotal': '…共 {count} 个文件、{dirs} 个目录——完整路径点「复制清单」获取',
     'ext.toastRepaired': '已重建修复 {name}',
     'ext.toastUpToDate': '{name} 已是最新',
