@@ -47,6 +47,7 @@ const STEPS = [
     { name: 'check-iter2-interactions', needsInject: true },
     { name: 'check-iter7', needsInject: true },
     { name: 'check-backup', needsInject: true },
+    { name: 'check-conflict-repair', needsInject: false },
     { name: 'check-repo-summary', needsInject: false },
     { name: 'check-mobile', needsInject: false },
 ];

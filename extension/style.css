@@ -152,6 +152,48 @@
 .stgi-log-line.err { color: #ff6b6b; } /* 豁免: 语义状态色(错误)，四宿主无语义色主题变量 */
 .stgi-log-line.warn { color: #f4b942; } /* 豁免: 语义状态色(警告)，四宿主无语义色主题变量 */
 
+/* 更新冲突修复卡（2026-11-07）：原生更新被拒时的识别结果与重建入口。
+   卡内 pre 清单可横向滚动，防止长路径撑破抽屉（375px 无溢出纪律） */
+.stgi-repair-card {
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-left: 3px solid #f4b942; /* 豁免: 语义状态色(警告)左强调条，四宿主无语义色主题变量 */
+    border-radius: 6px;
+    /* 豁免: 卡片底为纯 alpha 黑叠加，与 .stgi-log 同源语义，无对应主题变量 */
+    background: rgba(0, 0, 0, 0.25);
+    padding: 8px;
+    margin: 6px 0;
+}
+
+.stgi-repair-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.stgi-repair-files {
+    margin: 6px 0;
+}
+
+.stgi-repair-files-title {
+    font-weight: bold;
+    font-size: 0.85em;
+    opacity: 0.85;
+    margin-bottom: 2px;
+}
+
+.stgi-repair-files pre {
+    margin: 0;
+    padding: 4px 6px;
+    max-height: 140px;
+    max-width: 100%;
+    overflow: auto;
+    font-size: 0.8em;
+    font-family: monospace;
+    white-space: pre;
+    border-radius: 4px;
+    /* 豁免: 清单区底为纯 alpha 黑叠加（日志区同源），无对应主题变量 */
+    background: rgba(0, 0, 0, 0.25);
+}
+
 /* 运行环境卡：键值两列表 */
 .stgi-kv {
     display: flex;

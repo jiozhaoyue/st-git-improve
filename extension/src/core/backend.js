@@ -4,6 +4,7 @@
 
 const HOST_API_TIMEOUT_MS = 15000;      // 常规宿主通道调用超时（L1-MR-7 有界等待）
 const HOST_INSTALL_TIMEOUT_MS = 180000; // 安装=服务端 git 克隆，可能数十秒，超时放宽
+const HOST_UPDATE_TIMEOUT_MS = 60000;   // 原生更新=服务端 git fetch+merge，放宽但不等于克隆
 
 let csrfCache = null;
 let csrfPromise = null;
@@ -71,7 +72,9 @@ async function hostApi(path, options = {}) {
     try {
         data = text ? JSON.parse(text) : null;
     } catch {
-        data = { raw: text.slice(0, 300) };
+        // 非 JSON 响应（宿主把 git stderr 原文/纯文本放响应体）：raw 供旧消费方，
+        // rawText 保留全文——git 冲突文件清单常超 300 字符，截断会丢清单
+        data = { raw: text.slice(0, 300), rawText: text };
     }
     return { status: response.status, ok: response.ok, data };
 }
@@ -81,6 +84,24 @@ export async function hostNativeInstall({ authedUrl, global: isGlobal, branch })
     const body = { url: authedUrl, global: Boolean(isGlobal) };
     if (branch) body.branch = branch;
     const result = await hostApi('/api/extensions/install', { body, timeoutMs: HOST_INSTALL_TIMEOUT_MS });
+    return result;
+}
+
+/**
+ * 宿主原生无损更新（ST 原生扩展菜单「更新」同款通道：服务端 git fetch+merge）。
+ * 实测契约（随仓 ST 前端源 standalone/scripts/extensions.js updateExtension 核对，
+ * 待 Dev 实例复核）：POST /api/extensions/update，body { extensionName, global }；
+ * 成功 200 { isUpToDate: boolean, shortCommitHash?: string }；失败非 200 → 响应文本
+ * = git 错误原文（与后端日志同源，前端可见）。原生 UI 传 '/<名称>' 形态，面板按
+ * delete/move 同款传裸名（delete 通道实测服务端对两种形态归一化）。
+ * 404 = 宿主无此通道（版本过旧）→ channelMissing，调用方回退删旧重装。
+ */
+export async function hostNativeUpdate(name, global = false) {
+    const result = await hostApi('/api/extensions/update', {
+        body: { extensionName: String(name || '').replace(/^third-party\//, ''), global: Boolean(global) },
+        timeoutMs: HOST_UPDATE_TIMEOUT_MS,
+    });
+    if (result.status === 404) return { ...result, channelMissing: true };
     return result;
 }
 

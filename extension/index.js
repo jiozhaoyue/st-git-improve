@@ -20,6 +20,7 @@ const { detectCapabilityState, can } = await import(`./src/core/capability.js?v=
 const { t } = await import(`./src/i18n/index.js?v=${V}`);
 const { createGovernanceLog } = await import(`./src/core/governance-log.js?v=${V}`);
 const { fetchBranches, checkRemoteUpdate, fetchRepoInfo } = await import(`./src/core/remote-status.js?v=${V}`);
+const { probeNativeUpdate, repairByRebuild } = await import(`./src/core/repairflow.js?v=${V}`);
 
 function toast(msg, kind = 'info') {
     const toastr = window.toastr;
@@ -837,31 +838,152 @@ function buildExtensionsZone(hooks) {
     const sortBy = list.querySelector('[data-role="sortBy"]');
     sortBy.addEventListener('change', () => refresh());
 
-    /** 行内操作：更新（仅登记来源者；宿主 delete + 重装，删前强确认——本地改动不备份）。 */
-    async function runUpdate(entry, origin, button) {
-        const confirmed = await confirmDangerous({
-            text: t('confirm.updateText', { name: entry.name || origin.url }),
-            danger: t('confirm.updateDanger'),
-            okButton: t('popup.confirmUpdate'),
+    /** 修复卡挡道文件预览上限：只画前 N 条防 DOM 爆炸，完整清单走「复制日志」（2188 文件量级实测）。 */
+    const REPAIR_FILE_PREVIEW = 50;
+
+    /** 删旧+重装共用引擎（no-channel 回退与重建修复同源；破坏性确认由调用方完成）。
+     * @returns {Promise<boolean>} 成功与否（修复卡据此决定是否移除，失败可重试）。 */
+    async function rebuildViaInstall(origin, entry, append, { repair = false, conflictCount = 0, rejectedNote = '' } = {}) {
+        try {
+            if (repair) {
+                await repairByRebuild({
+                    name: entry.name,
+                    url: origin.url,
+                    branch: origin.branch || '',
+                    target: origin.target || 'extension',
+                    accounts: RT.store,
+                    onLog: append,
+                });
+                await RT.govLog?.append(
+                    'repair',
+                    entry.name,
+                    conflictCount > 0
+                        ? t('ledger.detail.rebuildRepair', { count: conflictCount })
+                        : t('ledger.detail.rebuildRejected', { message: (rejectedNote || '').slice(0, 80) }),
+                ).catch(() => { });
+                toast(t('ext.toastRepaired', { name: entry.name }), 'success');
+            } else {
+                await repairByRebuild({
+                    name: entry.name,
+                    url: origin.url,
+                    branch: origin.branch || '',
+                    target: origin.target || 'extension',
+                    accounts: RT.store,
+                    onLog: append,
+                });
+                await RT.govLog?.append('update', entry.name, t('ledger.detail.rebuildFallback')).catch(() => { });
+                toast(t('ext.toastUpdated', { name: entry.name || origin.url }), 'success');
+            }
+            appendRefreshButton(zoneLog);
+            await refresh({ force: true });
+            return true;
+        } catch (error) {
+            append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
+            toast(String(error.message || error), 'error');
+            return false;
+        }
+    }
+
+    /** 修复卡：冲突识别结果 + 挡道文件清单 + 重建修复入口（官方 Popup 强确认，D9-3）。
+     * 备份态如实标注：纯前端无文件读取通道不可用；Authority 备份通道接入点见 repairByRebuild 的 backupFn。 */
+    function renderRepairCard(probe, origin, entry, append) {
+        const kindKey = probe.status === 'untracked-conflict' ? 'ext.repairKind.untracked'
+            : probe.status === 'local-changes' ? 'ext.repairKind.localChanges' : 'ext.repairKind.other';
+        const card = el(`<div class="stgi-repair-card">
+            <div class="stgi-repair-title"></div>
+            <div class="stgi-repair-kind stgi-note"></div>
+            <div class="stgi-repair-note stgi-note"></div>
+            <div class="stgi-repair-files" data-role="repairFiles" style="display:none">
+                <div class="stgi-repair-files-title"></div>
+                <pre></pre>
+            </div>
+            <div class="stgi-repair-backup stgi-note"></div>
+            <div class="stgi-row">
+                <button class="stgi-btn stgi-repair-run"></button>
+            </div>
+        </div>`);
+        card.querySelector('.stgi-repair-title').textContent = t('ext.repairTitle');
+        card.querySelector('.stgi-repair-kind').textContent = t(kindKey);
+        card.querySelector('.stgi-repair-note').textContent = t('ext.repairNote');
+        const filesBox = card.querySelector('[data-role="repairFiles"]');
+        if (probe.files.length > 0) {
+            filesBox.style.display = '';
+            filesBox.querySelector('.stgi-repair-files-title').textContent = t('ext.repairFilesTitle', { count: probe.files.length });
+            filesBox.querySelector('pre').textContent = probe.files.slice(0, REPAIR_FILE_PREVIEW).join('\n')
+                + (probe.files.length > REPAIR_FILE_PREVIEW ? `\n… (${probe.files.length - REPAIR_FILE_PREVIEW} more)` : '');
+        }
+        card.querySelector('.stgi-repair-backup').textContent = t('ext.repairBackupNote');
+        const run = card.querySelector('.stgi-repair-run');
+        run.textContent = t('ext.repairRun');
+        run.title = t('ext.rebuildRunTitle');
+        run.addEventListener('click', async () => {
+            const confirmed = await confirmDangerous({
+                text: t('confirm.rebuildText', { name: entry.name || origin.url, count: probe.files.length }),
+                danger: t('confirm.rebuildDanger'),
+                okButton: t('ext.repairRun'),
+            });
+            if (!confirmed) return;
+            run.disabled = true;
+            append(`—— ${t('ext.repairTitle')} ——`);
+            const okDone = await rebuildViaInstall(origin, entry, append, { repair: true, conflictCount: probe.files.length });
+            if (okDone) card.remove(); else run.disabled = false;
         });
-        if (!confirmed) return;
+        zoneLog.append(card);
+    }
+
+    /** 行内操作：更新（2026-11-07 升级：原生无损优先 → 冲突自动分类出修复卡 → 无通道回退）。
+     * 原生更新 = 服务端 git fetch+merge（能快进则保留本地改动；被拒则 git 原地中止，无副作用），
+     * 故探测无需事前强确认；破坏性的重建路径在回退分支与修复卡内各自强确认（D9-3）。 */
+    async function runUpdate(entry, origin, button) {
         button.disabled = true;
         zoneLog.style.display = '';
         zoneLog.innerHTML = '';
         appendCopyLogButton(zoneLog);
         const append = (line, kind = 'plain') => appendLogLine(zoneLog, line, kind);
         try {
-            await pureInstall({
-                url: origin.url,
-                branch: origin.branch || undefined,
-                target: origin.target || 'extension',
-                replace: true,
-                accounts: RT.store,
-                onLog: line => append(line),
-            });
-            appendRefreshButton(zoneLog);
-            toast(t('ext.toastUpdated', { name: entry.name || origin.url }), 'success');
-            await refresh({ force: true });
+            append(t('ext.nativeUpdateTrying', { name: entry.name || origin.url }));
+            const probe = await probeNativeUpdate(entry.name, { global: entry.scope === 'global' });
+            if (probe.status === 'up-to-date') {
+                append(t('ext.nativeUpToDate'), 'ok');
+                toast(t('ext.toastUpToDate', { name: entry.name || origin.url }), 'success');
+                await refresh({ force: true });
+                return;
+            }
+            if (probe.status === 'updated') {
+                append(t('ext.nativeUpdated', { hash: probe.shortCommitHash || '?' }), 'ok');
+                await RT.govLog?.append('update', entry.name, t('ledger.detail.nativeUpdate', { hash: probe.shortCommitHash || '?' })).catch(() => { });
+                toast(t('ext.toastNativeUpdated', { name: entry.name || origin.url }), 'success');
+                appendRefreshButton(zoneLog);
+                await refresh({ force: true });
+                return;
+            }
+            if (probe.status === 'no-channel') {
+                append(t('ext.noNativeChannel'), 'warn');
+                const confirmed = await confirmDangerous({
+                    text: t('confirm.updateText', { name: entry.name || origin.url }),
+                    danger: t('confirm.updateDanger'),
+                    okButton: t('popup.confirmUpdate'),
+                });
+                if (!confirmed) return;
+                await rebuildViaInstall(origin, entry, append);
+                return;
+            }
+            if (probe.status === 'network') {
+                // 网络/认证错误：重建救不了连通性，如实呈现即可
+                append(t('ext.nativeUpdateFailed', { message: (probe.raw || '').slice(0, 200) }), 'err');
+                toast(String((probe.raw || t('gov.opFailed')).slice(0, 160)), 'error');
+                return;
+            }
+            // 冲突（untracked-conflict / local-changes）与其余被拒形态 → 修复卡
+            if (probe.status === 'untracked-conflict' || probe.status === 'local-changes') {
+                append(t('ext.conflictDetected', { count: probe.files.length }), 'err');
+                const preview = probe.files.slice(0, REPAIR_FILE_PREVIEW);
+                for (const file of preview) append(`  ${file}`, 'warn');
+                if (probe.files.length > preview.length) append(t('ext.conflictMore', { count: probe.files.length - preview.length }));
+            } else {
+                append(t('ext.nativeUpdateFailed', { message: (probe.raw || '').slice(0, 200) }), 'err');
+            }
+            renderRepairCard(probe, origin, entry, append);
         } catch (error) {
             append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
             toast(String(error.message || error), 'error');
@@ -1023,7 +1145,7 @@ function buildExtensionsZone(hooks) {
                 </tr>`);
                 const actionsCell = row.querySelector('.stgi-actions-cell');
                 if (origin) {
-                    const updateButton = el(`<button class="stgi-btn">${esc(t('ext.update'))}</button>`);
+                    const updateButton = el(`<button class="stgi-btn" title="${esc(t('ext.updateTitle'))}">${esc(t('ext.update'))}</button>`);
                     updateButton.addEventListener('click', () => runUpdate(entry, origin, updateButton));
                     actionsCell.append(updateButton);
                     applyGate(updateButton, can('update', RT.cap));
@@ -1132,6 +1254,8 @@ function buildGovernanceZone(hooks) {
                             <option value="enable">${esc(t('ledger.action.enable'))}</option>
                             <option value="move">${esc(t('ledger.action.move'))}</option>
                             <option value="dedupClean">${esc(t('ledger.action.dedupClean'))}</option>
+                            <option value="update">${esc(t('ledger.action.update'))}</option>
+                            <option value="repair">${esc(t('ledger.action.repair'))}</option>
                         </select>
                     </div>
                 <table class="stgi-table" data-role="ledgerTable" style="display:none"><thead>
@@ -1493,8 +1617,8 @@ async function confirmDangerous(options) {
 
 // ---------------------------------------------------------------- 面板装配（总览 + 三区；D4-1/D4-2）
 
-/** 台账动作徽标着色（disable/enable/uninstall/install/dedupClean/move；未列出的不着色）。 */
-const LEDGER_BADGE = { disable: 'warn', enable: 'good', uninstall: 'bad', install: 'good', dedupClean: 'warn' };
+/** 台账动作徽标着色（disable/enable/uninstall/install/dedupClean/move/update/repair；未列出的不着色）。 */
+const LEDGER_BADGE = { disable: 'warn', enable: 'good', uninstall: 'bad', install: 'good', dedupClean: 'warn', update: 'good', repair: 'warn' };
 
 /** 分区骨架（同页纵向分区，D4-2；非旧五页签）。 */
 function zoneWrap(zoneKey, title) {
@@ -1527,6 +1651,7 @@ function buildHelpSection() {
         ['help.pureQ', 'help.pureA'],
         ['help.sshQ', 'help.sshA'],
         ['help.updateQ', 'help.updateA'],
+        ['help.conflictQ', 'help.conflictA'],
         ['help.hideQ', 'help.hideA'],
         ['help.staleQ', 'help.staleA'],
         ['help.dataQ', 'help.dataA'],
@@ -1613,7 +1738,9 @@ function buildQuickActions(root, hooks) {
     applyGate(box.querySelector('[data-act="quickFullScan"]'), fullScanGate());
 
     // 全部更新（全局批量动作，C-1 唯一入口）：顺序更新全部登记来源的扩展。
-    // 每个更新 = 删旧目录重装（D9-3 不可恢复语义）→ 批量动作前置强确认。
+    // 2026-11-07 升级：每项先走原生无损更新（保留本地改动）；无通道回退删旧重装
+    // （批量前置强确认已覆盖该破坏性回退）；更新被拒（冲突）**不自动重建**——
+    // 破坏性动作需逐项确认（D9-3），标注留痕并引导到行内修复卡。
     box.querySelector('[data-act="quickUpdateAll"]').addEventListener('click', async event => {
         const button = event.target;
         const installs = Object.entries(RT.store.getInstalls());
@@ -1635,25 +1762,56 @@ function buildQuickActions(root, hooks) {
         const append = (line, kind = 'plain') => appendLogLine(quickLog, line, kind);
         append(t('quick.updateTotal', { count: installs.length }));
         let okCount = 0;
+        let needRepair = 0;
         const failed = [];
         for (const [name, origin] of installs) {
             append(`—— ${name} ——`);
             try {
-                await pureInstall({
-                    url: origin.url,
-                    branch: origin.branch || undefined,
-                    target: origin.target || 'extension',
-                    replace: true,
-                    accounts: RT.store,
-                    onLog: line => append(line),
-                });
-                okCount += 1;
+                const probe = await probeNativeUpdate(name, { global: origin.target === 'global' });
+                if (probe.status === 'up-to-date') {
+                    append(t('ext.nativeUpToDate'), 'ok');
+                    okCount += 1;
+                    continue;
+                }
+                if (probe.status === 'updated') {
+                    append(t('ext.nativeUpdated', { hash: probe.shortCommitHash || '?' }), 'ok');
+                    await RT.govLog?.append('update', name, t('ledger.detail.nativeUpdate', { hash: probe.shortCommitHash || '?' })).catch(() => { });
+                    okCount += 1;
+                    continue;
+                }
+                if (probe.status === 'no-channel') {
+                    append(t('ext.noNativeChannel'), 'warn');
+                    await repairByRebuild({
+                        name,
+                        url: origin.url,
+                        branch: origin.branch || '',
+                        target: origin.target || 'extension',
+                        accounts: RT.store,
+                        onLog: append,
+                    });
+                    await RT.govLog?.append('update', name, t('ledger.detail.rebuildFallback')).catch(() => { });
+                    okCount += 1;
+                    continue;
+                }
+                if (probe.status === 'network') {
+                    throw new Error((probe.raw || '').slice(0, 160));
+                }
+                // 冲突与其余被拒形态：留痕不重建
+                needRepair += 1;
+                append(
+                    probe.status === 'untracked-conflict' || probe.status === 'local-changes'
+                        ? t('ext.conflictDetected', { count: probe.files.length })
+                        : t('ext.nativeUpdateFailed', { message: (probe.raw || '').slice(0, 160) }),
+                    'warn',
+                );
+                append(t('quick.itemNeedRepair'), 'warn');
             } catch (error) {
                 failed.push(name);
                 append(t('ext.logFailed', { message: String(error?.message || error) }), 'err');
             }
         }
         append(t('quick.updateSummary', { ok: okCount, failed: failed.length }), failed.length ? 'err' : 'ok');
+        if (needRepair > 0) append(t('quick.updateRepairable', { count: needRepair }), 'warn');
         appendRefreshButton(quickLog);
         quickState.textContent = t('quick.updateSummary', { ok: okCount, failed: failed.length });
         toast(t('quick.updateSummary', { ok: okCount, failed: failed.length }), failed.length > 0 ? 'error' : 'success');

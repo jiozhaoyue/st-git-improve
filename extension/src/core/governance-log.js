@@ -13,8 +13,9 @@ const V = '0.9.3';
 const KEY = 'st_git_improve_governance';
 const MAX_ENTRIES = 200;
 
-/** 合法动作白名单（台账只记治理类动作；扩展键位见 strings.js ledger.action.*）。 */
-const ACTIONS = ['disable', 'enable', 'uninstall', 'install', 'dedupClean', 'move'];
+/** 合法动作白名单（台账只记治理类动作；扩展键位见 strings.js ledger.action.*）。
+ * update/repair（2026-11-07）：原生无损更新与重建修复的留痕。 */
+const ACTIONS = ['disable', 'enable', 'uninstall', 'install', 'dedupClean', 'move', 'update', 'repair'];
 
 let backendPromise = null;
 async function backend() {
@@ -152,7 +153,7 @@ export function createGovernanceLog() {
         name: 'governance-log',
         /**
          * 追加一条治理记录（封顶自动淘汰最旧）。
-         * @param {'disable'|'enable'|'uninstall'|'dedupClean'|'move'} action
+         * @param {'disable'|'enable'|'uninstall'|'dedupClean'|'move'|'update'|'repair'} action
          * @param {string} name
          * @param {string} [detail]
          */

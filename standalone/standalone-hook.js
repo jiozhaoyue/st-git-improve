@@ -169,6 +169,46 @@
     });
   });
 
+  // 原生更新通道（面板「无损更新优先 + 冲突修复卡」的演示端点，2026-11-07）。
+  // 实测契约（随仓 ST 前端源 updateExtension 核对）：成功 200 { isUpToDate, shortCommitHash }；
+  // 失败非 200 → 响应体 = git 错误原文（非 JSON）。
+  // 演示开关：localStorage.__stgiDemoUpdateConflict = 'untracked'（未跟踪文件挡道，
+  // 2026-11-07 实测场景）/ 'local'（本地改动冲突）；其余值 = 正常更新成功。
+  router.set("POST /api/extensions/update", async () => {
+    let mode = "off";
+    try {
+      mode = String(localStorage.getItem("__stgiDemoUpdateConflict") || "off");
+    } catch {
+      /* 存储不可用按正常态 */
+    }
+    if (mode === "untracked") {
+      return text(
+        [
+          "error: The following untracked working tree files would be overwritten by merge:",
+          "\tindex.js",
+          "\tsrc/core/backend.js",
+          "\tsrc/core/conflict.js",
+          "\tsrc/core/repairflow.js",
+          "Please move or remove them before you merge.",
+          "Aborting",
+        ].join("\n"),
+        500
+      );
+    }
+    if (mode === "local") {
+      return text(
+        [
+          "error: Your local changes to the following files would be overwritten by merge:",
+          "\tstyle.css",
+          "Please commit your changes or stash them before you merge.",
+          "Aborting",
+        ].join("\n"),
+        500
+      );
+    }
+    return json({ isUpToDate: false, shortCommitHash: "d3m0c0m1" });
+  });
+
   // Authority 能力清单（design.md §5 契约草案 v0）：脱机壳内 Authority 未装 → 404，面板呈现纯前端态
   router.set("GET /api/plugins/authority/ext-mgmt/capabilities", () =>
     json({ error: "not_available_in_standalone", reason: "standalone-preview", remedy: "n/a" }, 404)
